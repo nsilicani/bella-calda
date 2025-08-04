@@ -1,0 +1,25 @@
+[project]
+name = "bella-calda"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "bcrypt==4.0.1",
+    "fastapi[standard]>=0.116.1",
+    "folium>=0.20.0",
+    "openrouteservice>=2.3.3",
+    "passlib[bcrypt]>=1.7.4",
+    "psycopg2-binary>=2.9.10",
+    "pydantic-settings>=2.10.1",
+    "python-dotenv>=1.1.1",
+    "python-jose[cryptography]>=3.5.0",
+    "ruff>=0.12.5",
+    "sqlalchemy>=2.0.42",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "requests>=2.32.4",
+]
