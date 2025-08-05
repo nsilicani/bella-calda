@@ -4,6 +4,8 @@ from app.auth.utils import hash_password
 from app.database import DatabaseManager
 from app.crud import create_user
 
+from constants import TEST_USERS
+
 
 def init_db() -> None:
     with DatabaseManager() as db_session:
@@ -13,13 +15,14 @@ def init_db() -> None:
             .first()
         )
     if not user:
-        user_in = User(
-            email="user@example.com",
-            hashed_password=hash_password("password123"),
-            full_name="Test User",
-            role="user",  # or "staff" or "admin"
-        )
-        user = create_user(db=db_session, new_user=user_in)
+        for test_user in TEST_USERS:
+            user_in = User(
+                email=test_user["email"],
+                hashed_password=hash_password(test_user["password"]),
+                full_name=test_user["full_name"],
+                role=test_user["role"],  # or "staff" or "admin"
+            )
+            user = create_user(db=db_session, new_user=user_in)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
-from base import RoutePlannerService
+from typing import List
+from .base import RoutePlannerService
 
 from openrouteservice import Client
 
@@ -9,16 +10,22 @@ class OpenRouteService(RoutePlannerService):
         self.client = self.initialize_client()
 
     def initialize_client(self) -> Client:
-        return Client(key=self.key)
+        return Client(key=self.api_key)
 
-    def get_coordinates(self, address_from, address_to):
-        coord_from = self.client.pelias_search(text=address_from)["features"][0][
+    @staticmethod
+    def format_address(address, postal_code, city, country):
+        return f"{address}, {postal_code}, {city}, {country}"
+
+    def get_coordinates(
+        self, address: str, postal_code: str, city: str, country: str
+    ) -> List[float]:
+        formatted_address = self.format_address(
+            address=address, postal_code=postal_code, city=city, country=country
+        )
+        coords = self.client.pelias_search(text=formatted_address)["features"][0][
             "geometry"
         ]["coordinates"]
-        coord_to = self.client.pelias_search(text=address_to)["features"][0][
-            "geometry"
-        ]["coordinates"]
-        return coord_from, coord_to
+        return coords
 
     def get_directions(
         self,
@@ -33,5 +40,5 @@ class OpenRouteService(RoutePlannerService):
             format=format,
         )
 
-    def _get_optimize_route(self) -> None:
+    def get_optimize_route(self) -> None:
         pass

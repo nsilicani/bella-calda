@@ -1,4 +1,6 @@
 import pytest
+from datetime import datetime, timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -7,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.database import Base, create_new_db_session
 from app.models import user, order, driver
+from scripts.constants import BASE_URL, TEST_USERS, ORDER_PAYLOAD
 
 DATABASE_URL = "sqlite://"
 
@@ -43,7 +46,7 @@ def client_fixture(session: Session):
 
 @pytest.fixture
 def base_url():
-    return "http://localhost:8000"
+    return BASE_URL
 
 
 @pytest.fixture
@@ -54,3 +57,58 @@ def user_credentials():
         "full_name": "Test User",
         "role": "user",
     }
+
+
+@pytest.fixture
+def test_users():
+    return TEST_USERS
+
+
+@pytest.fixture
+def create_users(client, base_url, test_users):
+    """
+    Create test users in test db
+    """
+
+    ENDPOINT_SIGNUP = f"{base_url}/api/v1/auth/signup"
+    for user_credential in test_users:
+        client.post(
+            url=ENDPOINT_SIGNUP,
+            json={
+                "email": user_credential["email"],
+                "full_name": user_credential["full_name"],
+                "password": user_credential["password"],
+                "role": user_credential["role"],
+            },
+        )
+
+
+@pytest.fixture
+def order_payload():
+    return ORDER_PAYLOAD
+
+
+@pytest.fixture
+def create_orders(client, base_url, test_users, order_payload):
+    """
+    Create test orders in test db
+    """
+
+    ENDPOINT_LOGIN = f"{base_url}/api/v1/auth/login"
+    ORDERS_ENDPOINT = f"{base_url}/api/v1/orders/order/"
+    for user_credential in test_users:
+        order_payload["customer_name"] = user_credential["full_name"]
+        response_login = client.post(
+            url=ENDPOINT_LOGIN,
+            data={
+                "username": user_credential["email"],
+                "password": user_credential["password"],
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        token = response_login.json()["access_token"]
+        order_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        client.post(url=ORDERS_ENDPOINT, json=order_payload, headers=order_headers)

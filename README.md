@@ -127,6 +127,64 @@ Authorization: Bearer <token>
 
 ---
 
+## Optimization Algorithm
+Route Optimization is implemented considering:
+- Order are clustered based on:
+  - Location
+  - Delivery time
+  - Driver capacity (i.e. one driver can handle up to 10 pizzas)
+- The clusters of order are sorted by time
+- Given a cluster of orders, the driver's optimized route is computed
+- In order to assign cluster of orders to a driver, the following factors need to be considered:
+  - Optimized route computed previously
+  - Driver availability (i.e. we fetch the driver's current location and compute the time to return to the pizza restaurant)
+  - Pizza preparation
+  - Time window due to hotness constrain: pizza must arrive within 20 minutes of beign baked
+
+```plaintext
+function assign_orders_to_drivers():
+    ready_orders = fetch_unassigned_orders()
+    pre_filtered_orders = filter_out_unavailable_orders(ready_orders)
+    
+    clusters = cluster_orders(pre_filtered_orders)
+    sorted_clusters = sort_clusters_by_earliest_delivery_time(clusters)
+    
+    available_drivers = fetch_available_drivers_with_location()
+
+    for each cluster in sorted_clusters:
+        cluster_route = compute_optimized_route(cluster)
+        latest_prep_time = estimate_latest_pizza_ready_time(cluster)
+        dispatch_ready_time = max(current_time, latest_prep_time)
+
+        best_driver = null
+        lowest_cost = inf
+
+        for each driver in available_drivers:
+            driver_return_eta = estimate_driver_return_time(driver)
+            driver_ready_time = current_time + driver_return_eta
+
+            wait_time = max(0, dispatch_ready_time - driver_ready_time)
+            delivery_estimates = simulate_delivery_times(cluster_route, dispatch_ready_time)
+
+            if not satisfies_hotness_constraint(delivery_estimates, dispatch_ready_time):
+                continue  // skip this driver
+
+            cost = compute_assignment_cost(wait_time, delivery_estimates, cluster_route.total_duration)
+
+            if cost < lowest_cost:
+                best_driver = driver
+                lowest_cost = cost
+
+        if best_driver is not null:
+            assign_cluster_to_driver(cluster, best_driver, dispatch_ready_time)
+            mark_driver_as_unavailable(best_driver)
+            update_orders_as_assigned(cluster.orders)
+        else:
+            defer_cluster_for_next_batch(cluster)
+```
+
+---
+
 ## Order Management Endpoints (WIP)
 
 | METHOD | ROUTE | FUNCTIONALITY | ACCESS |
@@ -223,3 +281,6 @@ fastapi run app/main.py
 - https://docs.docker.com/desktop/setup/install/windows-install/
 - https://blog.ni18.in/the-operation-could-not-be-started-because-a-required-feature-is-not-installed/
 - https://github.com/jod35/Pizza-Delivery-API/blob/main/README.md
+- https://medium.com/@melthaw/using-pydantic-for-data-validation-with-sqlalchemy-b15e4497cfb4
+- https://github.com/fastapi/fastapi/discussions/8955
+- https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#using-context-managers-in-dependencies-with-yield

@@ -8,6 +8,7 @@ dependencies = [
     "bcrypt==4.0.1",
     "fastapi[standard]>=0.116.1",
     "folium>=0.20.0",
+    "geopy>=2.4.1",
     "openrouteservice>=2.3.3",
     "passlib[bcrypt]>=1.7.4",
     "psycopg2-binary>=2.9.10",

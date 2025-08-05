@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     DB_HOST: str = "localhost"
     DB_PORT: str = "5432"
     DB_NAME: str = "pizza_db"
+    ROUTE_SERVICE_PROVIDER: str = "openrouteservice"
+    ROUTE_SERVICE_API_KEY: str
+    POSTAL_CODE: str
+    CITY: str
+    COUNTRY: str
 
 
 settings = Settings()
