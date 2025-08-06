@@ -182,6 +182,13 @@ function assign_orders_to_drivers():
         else:
             defer_cluster_for_next_batch(cluster)
 ```
+### Clustering
+The Problem with Coordinate-Based Clustering (e.g. DBSCAN + Euclidean): Geographic proximity (e.g. similar lat/lon) does not always reflect true travel time or effort.
+- Two addresses might be on opposite sides of a river, highway, or railway,
+- Or separated by one-way streets or traffic bottlenecks,
+- Yet Euclidean (or even Haversine) distance would treat them as "close."
+
+
 
 ---
 

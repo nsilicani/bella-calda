@@ -2,6 +2,7 @@ import os
 import secrets
 from dotenv import load_dotenv
 
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
@@ -12,7 +13,7 @@ DATABASE_URL = os.getenv(
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="APP_CONFIGS__")
+    model_config = SettingsConfigDict(env_prefix="APP_SETTINGS__")
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -25,10 +26,24 @@ class Settings(BaseSettings):
     DB_PORT: str = "5432"
     DB_NAME: str = "pizza_db"
     ROUTE_SERVICE_PROVIDER: str = "openrouteservice"
-    ROUTE_SERVICE_API_KEY: str
     POSTAL_CODE: str
     CITY: str
     COUNTRY: str
+    MAX_PIZZAS_PER_CLUSTER: int = 10
+
+
+class OpenRouteServiceSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="OPENROUTESERVICE__")
+    ROUTE_SERVICE_API_KEY: str
+    PROFILE: str
+    METRIC: str
+    UNITS: str
+
+
+class GoogleMapsSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="GOOGLE_MAPS__")
 
 
 settings = Settings()
+open_route_settings = OpenRouteServiceSettings()
+google_maps_settings = GoogleMapsSettings()

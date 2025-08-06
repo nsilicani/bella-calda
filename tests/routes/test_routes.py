@@ -37,6 +37,47 @@ def test_routes_create_order(client, create_users, base_url, user_credentials):
     assert response_orders.status_code == 201
 
 
+def test_routes_order_get_available_orders(
+    client, base_url, create_users, create_orders
+):
+    GET_AVAILABLE_ORDERS_ENDPOINT = f"{base_url}/api/v1/orders/available_orders"
+    # Test three parameters
+    url = (
+        GET_AVAILABLE_ORDERS_ENDPOINT
+        + "?start_time={start_time}&radius_km={radius_km}&lat={lat}&lon={lon}"
+    )
+    start_time = "2025-08-05T10:00:00"
+    radius_km = 2
+    lat = 8.81
+    lon = 45.48
+    url = url.format(start_time=start_time, radius_km=radius_km, lat=lat, lon=lon)
+    response_get_avail_orders = client.get(url=url)
+    assert response_get_avail_orders.status_code == 200
+    data = response_get_avail_orders.json()
+    assert len(data) == 3
+
+    # Test only geographic parameters
+    url = GET_AVAILABLE_ORDERS_ENDPOINT + "?radius_km={radius_km}&lat={lat}&lon={lon}"
+    radius_km = 2
+    lat = 8.81
+    lon = 45.48
+    url = url.format(radius_km=radius_km, lat=lat, lon=lon)
+    response_get_avail_orders = client.get(url=url)
+    assert response_get_avail_orders.status_code == 200
+    data = response_get_avail_orders.json()
+    assert len(data) == 3
+
+
+def test_routes_clusters(client, base_url, create_users, create_orders_for_clustering):
+    CLUSTER_ENDPOINT = f"{base_url}/api/v1/orders/clusters"
+    response_clusters = client.get(url=CLUSTER_ENDPOINT)
+    assert response_clusters.status_code == 200
+    data = response_clusters.json()
+    assert len(data) == 2
+    assert len(data[0]) == 1
+    assert len(data[1]) == 2
+
+
 def test_routes_order_optimizer(client, base_url, create_users, create_orders):
     ORDERS_OPTIMIZER_ENDPOINT = f"{base_url}/api/v1/orders/optimize/"
     response_optimze = client.post(url=ORDERS_OPTIMIZER_ENDPOINT)

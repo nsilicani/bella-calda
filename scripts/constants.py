@@ -34,3 +34,43 @@ ORDER_PAYLOAD = {
     "estimated_prep_time": 20,
     "desired_delivery_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
 }
+
+ORDER_PAYLOAD_FOR_CLUSTERING = {
+    "Test User": {
+        "customer_name": "Test User",
+        "customer_phone": "+123456789",
+        "delivery_address": {
+            "address": "Corso Buenos Aires 33",
+            "city": "Milan",
+            "postal_code": "20124",
+        },
+        "items": "Margherita,Pepsi",
+        "estimated_prep_time": 20,
+        "desired_delivery_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+    },
+    "John Doe": {
+        "customer_name": "John Doe",
+        "customer_phone": "+123456789",
+        "delivery_address": {
+            "address": "Piazza Duomo 24",
+            "city": "Milan",
+            "postal_code": "20121",
+        },
+        "items": "Margherita,Pepsi",
+        "estimated_prep_time": 20,
+        "desired_delivery_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+    },
+    "Foo Bar": {
+        "customer_name": "Foo Bar",
+        "customer_phone": "+123456789",
+        "delivery_address": {
+            # Add a near address to previous order:
+            "address": "Piazza Duomo 26",
+            "city": "Milan",
+            "postal_code": "20121",
+        },
+        "items": "Margherita,Pepsi",
+        "estimated_prep_time": 20,
+        "desired_delivery_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+    },
+}

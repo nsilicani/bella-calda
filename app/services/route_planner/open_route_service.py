@@ -5,8 +5,11 @@ from openrouteservice import Client
 
 
 class OpenRouteService(RoutePlannerService):
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, profile: str, metric: str, units: str) -> None:
         self.api_key = api_key
+        self.profile = profile
+        self.metric = metric
+        self.units = units
         self.client = self.initialize_client()
 
     def initialize_client(self) -> Client:
@@ -26,6 +29,17 @@ class OpenRouteService(RoutePlannerService):
             "geometry"
         ]["coordinates"]
         return coords
+
+    def compute_distance_matrix(self, coords: List[List[float]]) -> List[List[float]]:
+        return self.client.distance_matrix(
+            locations=coords,
+            profile=self.profile,
+            metrics=[self.metric],
+            units=self.units,
+            resolve_locations=False,
+            sources=list(range(len(coords))),
+            destinations=list(range(len(coords))),
+        )
 
     def get_directions(
         self,

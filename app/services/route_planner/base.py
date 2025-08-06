@@ -24,6 +24,10 @@ class RoutePlannerService(ABC):
         pass
 
     @abstractmethod
+    def compute_distance_matrix(self) -> List[List[float]]:
+        pass
+
+    @abstractmethod
     def get_directions(self):
         pass
 

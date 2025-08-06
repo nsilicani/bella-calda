@@ -1,7 +1,12 @@
 from typing import List, Optional
+from typing_extensions import Annotated
 from datetime import datetime
+from functools import lru_cache
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+
+from app import config
 from app.models.user import User
 from app.models.order import Order
 from app.schemas import OrderCreate, OrderResponse, OrderOut
@@ -12,6 +17,11 @@ from app.services.route_planner.base import RoutePlannerService
 from app.services.route_planner.factory import get_route_planner
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
+
+
+@lru_cache
+def get_settings():
+    return config.Settings()
 
 
 # See https://fastapi.tiangolo.com/tutorial/response-model/#add-an-output-model
@@ -40,6 +50,7 @@ def create_order(
         lat=lat,
         lon=lon,
         items=order_data.items,
+        # NOTE: estimated_prep_time can be removed
         estimated_prep_time=order_data.estimated_prep_time,
         desired_delivery_time=order_data.desired_delivery_time,
     )
@@ -57,6 +68,24 @@ def optimize_orders(db: Session = Depends(create_new_db_session)):
         return {"detail": "Order optimization completed successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# TODO: add response_model=List[List[OrderOut]]
+@router.get("/clusters", response_model=List[List[OrderOut]])
+async def get_clustered_orders(
+    settings: Annotated[config.Settings, Depends(get_settings)],
+    db: Session = Depends(create_new_db_session),
+    route_planner: RoutePlannerService = Depends(get_route_planner),
+):
+    optimizer = OrdersOptimizer(db)
+    ready_orders = optimizer.fetch_unassigned_orders()
+    filtered = optimizer.filter_out_unavailable_orders(ready_orders)
+    clusters = await optimizer.cluster_orders(
+        route_planner=route_planner,
+        orders=filtered,
+        max_pizzas_per_cluster=settings.MAX_PIZZAS_PER_CLUSTER,
+    )
+    return [[order for order in cluster] for cluster in clusters]
 
 
 @router.get("/available_orders", response_model=List[OrderOut])
