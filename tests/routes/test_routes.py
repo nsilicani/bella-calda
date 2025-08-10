@@ -93,7 +93,7 @@ def test_routes_clusters_by_geo(
     assert len(data) == len(GEO_CLUSTERS)
     for idx, cluster in enumerate(data):
         for order_out, order_in in zip(cluster, GEO_CLUSTERS[idx]):
-            assert order_out["delivery_address"] == order_in
+            assert order_out["delivery_address"]["address"] == order_in
 
 
 def test_routes_order_optimizer(client, base_url, create_users, create_orders):

@@ -29,8 +29,13 @@ class Settings(BaseSettings):
     POSTAL_CODE: str
     CITY: str
     COUNTRY: str
+
+
+class ClusteringSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="CLUSTERING_SETTINGS__")
     MAX_PIZZAS_PER_CLUSTER: int = 10
     CLUSTER_TIME_WINDOW_MINUTES: int = 15
+    CLUSTER_DISTANCE_THRESHOLD: int = 120
 
 
 class OpenRouteServiceSettings(BaseSettings):

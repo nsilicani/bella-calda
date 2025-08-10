@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import config
+from app.crud import create_order
 from app.models.user import User
 from app.models.order import Order
 from app.schemas import OrderCreate, OrderResponse, OrderOut
@@ -21,8 +22,8 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
 @lru_cache
-def get_settings():
-    return config.Settings()
+def get_clustering_settings():
+    return config.ClusteringSettings()
 
 
 @lru_cache
@@ -32,7 +33,7 @@ def get_optimizer(db: Session = Depends(create_new_db_session)):
 
 # See https://fastapi.tiangolo.com/tutorial/response-model/#add-an-output-model
 @router.post("/order/", response_model=OrderResponse, status_code=201)
-def create_order(
+def create_order_in_db(
     order_data: OrderCreate,
     db: Session = Depends(create_new_db_session),
     current_user: User = Depends(get_current_user),
@@ -46,24 +47,9 @@ def create_order(
         city=order_data.delivery_address.city,
         country=order_data.delivery_address.country,
     )
-    new_order = Order(
-        creator_id=current_user.id,
-        customer_name=order_data.customer_name,
-        customer_phone=order_data.customer_phone,
-        delivery_address=order_data.delivery_address.address,
-        postal_code=order_data.delivery_address.postal_code,
-        city=order_data.delivery_address.city,
-        country=order_data.delivery_address.country,
-        lat=lat,
-        lon=lon,
-        items=order_data.items,
-        # NOTE: estimated_prep_time can be removed
-        estimated_prep_time=order_data.estimated_prep_time,
-        desired_delivery_time=order_data.desired_delivery_time,
+    new_order = create_order(
+        db=db, current_user=current_user, order_data=order_data, lon=lon, lat=lat
     )
-    db.add(new_order)
-    db.commit()
-    db.refresh(new_order)
     return new_order
 
 
@@ -78,21 +64,21 @@ def optimize_orders(optimizer: OrdersOptimizer = Depends(get_optimizer)):
 
 @router.get("/clusters_by_time", response_model=Dict[datetime, List[OrderResponse]])
 async def get_clustered_orders_by_time(
-    settings: Annotated[config.Settings, Depends(get_settings)],
+    clustering_settings: Annotated[config.Settings, Depends(get_clustering_settings)],
     optimizer: OrdersOptimizer = Depends(get_optimizer),
 ):
     ready_orders = optimizer.fetch_unassigned_orders()
     filtered = optimizer.filter_out_unavailable_orders(ready_orders)
     time_buckets = await optimizer.cluster_orders_by_time_window(
         orders=filtered,
-        time_window_minutes=settings.CLUSTER_TIME_WINDOW_MINUTES,
+        time_window_minutes=clustering_settings.CLUSTER_TIME_WINDOW_MINUTES,
     )
     return time_buckets
 
 
 @router.get("/clusters", response_model=List[List[OrderResponse]])
 async def get_clustered_orders_by_geo(
-    settings: Annotated[config.Settings, Depends(get_settings)],
+    clustering_settings: Annotated[config.Settings, Depends(get_clustering_settings)],
     optimizer: OrdersOptimizer = Depends(get_optimizer),
     route_planner: RoutePlannerService = Depends(get_route_planner),
 ):
@@ -102,7 +88,8 @@ async def get_clustered_orders_by_geo(
     clusters = await optimizer.cluster_orders_by_geographic_proximity(
         route_planner=route_planner,
         orders=filtered,
-        max_pizzas_per_cluster=settings.MAX_PIZZAS_PER_CLUSTER,
+        max_pizzas_per_cluster=clustering_settings.MAX_PIZZAS_PER_CLUSTER,
+        cluster_distance_threshold=clustering_settings.CLUSTER_DISTANCE_THRESHOLD,
     )
     return [[order for order in cluster] for cluster in clusters]
 

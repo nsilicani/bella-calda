@@ -77,6 +77,7 @@ class OrdersOptimizer:
         route_planner: RoutePlannerService,
         orders: List[Order],
         max_pizzas_per_cluster: int = 10,
+        cluster_distance_threshold: int = 120,
     ) -> List[List[Order]]:
         if len(orders) < 2:
             return [orders]
@@ -101,8 +102,7 @@ class OrdersOptimizer:
             n_clusters=None,
             metric="precomputed",
             linkage="average",
-            # TODO: set distance_threshold properly
-            distance_threshold=2 * 60,  # max N minutes between points
+            distance_threshold=cluster_distance_threshold,  # max N minutes between points
         )
         labels = clustering.fit_predict(dist_matrix)
 
@@ -116,8 +116,7 @@ class OrdersOptimizer:
             buffer = []
             total_pizzas = 0
             for order in cluster:
-                # TODO: implement pizza count robustly
-                pizza_count = len(order.items.split(","))
+                pizza_count = len(order.items["food"])
                 if total_pizzas + pizza_count > max_pizzas_per_cluster:
                     final_clusters.append(buffer)
                     buffer = []
