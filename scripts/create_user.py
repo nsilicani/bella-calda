@@ -4,7 +4,7 @@ from app.auth.utils import hash_password
 from app.database import DatabaseManager
 from app.crud import create_user
 
-from constants import TEST_USERS
+from constants import TEST_USERS_FOR_CLUSTERING
 
 
 def init_db() -> None:
@@ -15,7 +15,7 @@ def init_db() -> None:
             .first()
         )
     if not user:
-        for test_user in TEST_USERS:
+        for test_user in TEST_USERS_FOR_CLUSTERING:
             user_in = User(
                 email=test_user["email"],
                 hashed_password=hash_password(test_user["password"]),

@@ -1,5 +1,4 @@
 import pytest
-from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -13,6 +12,7 @@ from scripts.constants import (
     BASE_URL,
     TEST_USERS,
     ORDER_PAYLOAD,
+    TEST_USERS_FOR_CLUSTERING,
     ORDER_PAYLOAD_FOR_CLUSTERING,
 )
 
@@ -69,16 +69,14 @@ def test_users():
     return TEST_USERS
 
 
-@pytest.fixture
-def create_users(client, base_url, test_users):
+def create_users_utils(client, url, users):
     """
     Create test users in test db
     """
 
-    ENDPOINT_SIGNUP = f"{base_url}/api/v1/auth/signup"
-    for user_credential in test_users:
+    for user_credential in users:
         client.post(
-            url=ENDPOINT_SIGNUP,
+            url=url,
             json={
                 "email": user_credential["email"],
                 "full_name": user_credential["full_name"],
@@ -86,6 +84,15 @@ def create_users(client, base_url, test_users):
                 "role": user_credential["role"],
             },
         )
+
+
+@pytest.fixture
+def create_users(client, base_url, test_users):
+    """
+    Create test users in test db
+    """
+    ENDPOINT_SIGNUP = f"{base_url}/api/v1/auth/signup"
+    create_users_utils(client=client, url=ENDPOINT_SIGNUP, users=test_users)
 
 
 @pytest.fixture
@@ -125,12 +132,25 @@ def create_orders(client, base_url, test_users, order_payload):
 
 
 @pytest.fixture
+def test_users_for_clustering():
+    return TEST_USERS_FOR_CLUSTERING
+
+
+@pytest.fixture
+def create_users_for_clustering(client, base_url, test_users_for_clustering):
+    ENDPOINT_SIGNUP = f"{base_url}/api/v1/auth/signup"
+    create_users_utils(
+        client=client, url=ENDPOINT_SIGNUP, users=test_users_for_clustering
+    )
+
+
+@pytest.fixture
 def create_orders_for_clustering(
-    client, base_url, test_users, order_payload_for_clustering
+    client, base_url, test_users_for_clustering, order_payload_for_clustering
 ):
     ENDPOINT_LOGIN = f"{base_url}/api/v1/auth/login"
     ORDERS_ENDPOINT = f"{base_url}/api/v1/orders/order/"
-    for user_credential in test_users:
+    for user_credential in test_users_for_clustering:
         order_payload = order_payload_for_clustering[user_credential["full_name"]]
         response_login = client.post(
             url=ENDPOINT_LOGIN,

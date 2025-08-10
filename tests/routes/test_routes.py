@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta
-
-from scripts.constants import ORDER_PAYLOAD
+from app.schemas.order import OrderResponse
+from scripts.constants import ORDER_PAYLOAD, GEO_CLUSTERS
 
 
 def test_routes_create_order(client, create_users, base_url, user_credentials):
@@ -48,8 +47,8 @@ def test_routes_order_get_available_orders(
     )
     start_time = "2025-08-05T10:00:00"
     radius_km = 2
-    lat = 8.81
-    lon = 45.48
+    lon = 8.81
+    lat = 45.48
     url = url.format(start_time=start_time, radius_km=radius_km, lat=lat, lon=lon)
     response_get_avail_orders = client.get(url=url)
     assert response_get_avail_orders.status_code == 200
@@ -59,8 +58,8 @@ def test_routes_order_get_available_orders(
     # Test only geographic parameters
     url = GET_AVAILABLE_ORDERS_ENDPOINT + "?radius_km={radius_km}&lat={lat}&lon={lon}"
     radius_km = 2
-    lat = 8.81
-    lon = 45.48
+    lon = 8.81
+    lat = 45.48
     url = url.format(radius_km=radius_km, lat=lat, lon=lon)
     response_get_avail_orders = client.get(url=url)
     assert response_get_avail_orders.status_code == 200
@@ -68,14 +67,33 @@ def test_routes_order_get_available_orders(
     assert len(data) == 3
 
 
-def test_routes_clusters(client, base_url, create_users, create_orders_for_clustering):
+def test_routes_clusters_by_time(
+    client, base_url, create_users_for_clustering, create_orders_for_clustering
+):
+    CLUSTER_BY_TIME_ENDPOINT = f"{base_url}/api/v1/orders/clusters_by_time"
+    response_clusters = client.get(url=CLUSTER_BY_TIME_ENDPOINT)
+    assert response_clusters.status_code == 200
+    data = response_clusters.json()
+    assert len(data) == 4
+    for clustered_orders in data.values():
+        for ord in clustered_orders:
+            # We check order matching (we don't compare datetime fields, they have different datatype due to serialization):
+            ord_out = OrderResponse(**ord).model_dump()
+            keys_to_check = ["id", "creator_id", "delivery_address", "items"]
+            assert all([ord[k] == ord_out[k] for k in keys_to_check])
+
+
+def test_routes_clusters_by_geo(
+    client, base_url, create_users_for_clustering, create_orders_for_clustering
+):
     CLUSTER_ENDPOINT = f"{base_url}/api/v1/orders/clusters"
     response_clusters = client.get(url=CLUSTER_ENDPOINT)
     assert response_clusters.status_code == 200
     data = response_clusters.json()
-    assert len(data) == 2
-    assert len(data[0]) == 1
-    assert len(data[1]) == 2
+    assert len(data) == len(GEO_CLUSTERS)
+    for idx, cluster in enumerate(data):
+        for order_out, order_in in zip(cluster, GEO_CLUSTERS[idx]):
+            assert order_out["delivery_address"] == order_in
 
 
 def test_routes_order_optimizer(client, base_url, create_users, create_orders):

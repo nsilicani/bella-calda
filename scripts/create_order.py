@@ -1,13 +1,20 @@
 import requests
 
-from constants import BASE_URL, TEST_USERS, ORDER_PAYLOAD
+from constants import (
+    LOGIN_ENDPOINT,
+    CREATE_ORDER_ENDPOINT,
+    ORDERS_OPTIMIZER_ENDPOINT,
+    GET_AVAILABLE_ORDERS_ENDPOINT,
+    CLUSTER_ENDPOINT,
+    TEST_USERS_FOR_CLUSTERING,
+    ORDER_PAYLOAD_FOR_CLUSTERING,
+)
 
 
 def login(username, password):
     """Authenticate and retrieve access token"""
-    url = f"{BASE_URL}/api/v1/auth/login"
     response = requests.post(
-        url,
+        LOGIN_ENDPOINT,
         data={"username": username, "password": password},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -21,9 +28,8 @@ def login(username, password):
 
 def create_order(token, order_payload):
     """Send authenticated request to create an order"""
-    url = f"{BASE_URL}/api/v1/orders/order/"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    response = requests.post(url, json=order_payload, headers=headers)
+    response = requests.post(CREATE_ORDER_ENDPOINT, json=order_payload, headers=headers)
 
     print(f"Status Code: {response.status_code}")
     print("Response:")
@@ -31,7 +37,6 @@ def create_order(token, order_payload):
 
 
 def optimize_order():
-    ORDERS_OPTIMIZER_ENDPOINT = f"{BASE_URL}/api/v1/orders/optimize/"
     response_optimze = requests.post(url=ORDERS_OPTIMIZER_ENDPOINT)
     print(f"Status Code: {response_optimze.status_code}")
     print("Response:")
@@ -39,18 +44,30 @@ def optimize_order():
 
 
 def get_available_orders():
-    GET_AVAILABLE_ORDERS_ENDPOINT = f"{BASE_URL}/api/v1/orders/available_orders/"
     response_get_available_orders = requests.get(url=GET_AVAILABLE_ORDERS_ENDPOINT)
     print(f"Status Code: {response_get_available_orders.status_code}")
     print("Response:")
     print(response_get_available_orders.json())
 
 
+def cluster_orders():
+    response_cluster_orders = requests.get(url=CLUSTER_ENDPOINT)
+    print(f"Status Code: {response_cluster_orders.status_code}")
+    print("Response:")
+    data = response_cluster_orders.json()
+    for idx, cluster in enumerate(data):
+        print(f"Cluster: {idx}, ")
+        for order in cluster:
+            print(order["delivery_address"], order)
+        print("\n")
+
+
 if __name__ == "__main__":
-    for test_user in TEST_USERS:
-        ORDER_PAYLOAD["customer_name"] = test_user["full_name"]
+    for test_user in TEST_USERS_FOR_CLUSTERING:
+        order_payload = ORDER_PAYLOAD_FOR_CLUSTERING[test_user["full_name"]]
         token = login(username=test_user["email"], password=test_user["password"])
-        create_order(token=token, order_payload=ORDER_PAYLOAD)
+        create_order(token=token, order_payload=order_payload)
     print("***" * 20)
     optimize_order()
     get_available_orders()
+    cluster_orders()

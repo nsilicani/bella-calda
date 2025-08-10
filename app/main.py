@@ -10,6 +10,7 @@ from app.models import (
     order,
     user,
 )  # Order matters! (https://sqlmodel.tiangolo.com/tutorial/create-db-and-table/#sqlmodel-metadata-order-matters)
+from app.config_logging import setup_logging
 from app.config import settings
 
 
@@ -20,6 +21,7 @@ def custom_generate_unique_id(route: APIRoute) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
+    setup_logging(settings)
     yield
 
 

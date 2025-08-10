@@ -5,11 +5,14 @@ from openrouteservice import Client
 
 
 class OpenRouteService(RoutePlannerService):
-    def __init__(self, api_key: str, profile: str, metric: str, units: str) -> None:
+    def __init__(
+        self, api_key: str, profile: str, metric: str, units: str, logger
+    ) -> None:
         self.api_key = api_key
         self.profile = profile
         self.metric = metric
         self.units = units
+        self.logger = logger
         self.client = self.initialize_client()
 
     def initialize_client(self) -> Client:

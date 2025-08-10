@@ -1,24 +1,26 @@
 from sqlalchemy.orm import Session
-from app.models.order import Order
-from typing import List, Optional
+from typing import Dict, List, Optional
+from collections import defaultdict
 from datetime import datetime
+from logging import Logger
 
 from geopy.distance import geodesic
 from sklearn.cluster import AgglomerativeClustering
 
+from app.models.order import Order
 from app.services.route_planner.base import RoutePlannerService
 
 
 class OrdersOptimizer:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, logger: Logger):
         self.db = db
+        self.logger = logger
 
     def run(self):
         ready_orders = self.fetch_unassigned_orders()
         filtered_orders = self.filter_out_unavailable_orders(ready_orders)
 
-        # Add logging/debug prints if needed
-        print(
+        self.logger.info(
             f"Fetched {len(ready_orders)} orders, {len(filtered_orders)} after filtering."
         )
 
@@ -56,7 +58,21 @@ class OrdersOptimizer:
 
         return filtered
 
-    async def cluster_orders(
+    async def cluster_orders_by_time_window(
+        self, orders: List[Order], time_window_minutes: int = 15
+    ) -> Dict[datetime, List[Order]]:
+        time_buckets: Dict[datetime, List[Order]] = defaultdict(list)
+        for order in orders:
+            rounded_time = order.desired_delivery_time.replace(
+                minute=(order.desired_delivery_time.minute // time_window_minutes)
+                * time_window_minutes,
+                second=0,
+                microsecond=0,
+            )
+            time_buckets[rounded_time].append(order)
+        return time_buckets
+
+    async def cluster_orders_by_geographic_proximity(
         self,
         route_planner: RoutePlannerService,
         orders: List[Order],
@@ -65,7 +81,9 @@ class OrdersOptimizer:
         if len(orders) < 2:
             return [orders]
 
+        # One or more pairs of lng/lat values: https://openrouteservice-py.readthedocs.io/en/latest/#module-openrouteservice.distance_matrix
         coords = [(order.lon, order.lat) for order in orders]
+        self.logger.info(f"{coords=}")
 
         try:
             matrix_response = route_planner.compute_distance_matrix(
@@ -84,7 +102,7 @@ class OrdersOptimizer:
             metric="precomputed",
             linkage="average",
             # TODO: set distance_threshold properly
-            distance_threshold=2,  # max N minutes between points
+            distance_threshold=2 * 60,  # max N minutes between points
         )
         labels = clustering.fit_predict(dist_matrix)
 

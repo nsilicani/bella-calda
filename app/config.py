@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     CITY: str
     COUNTRY: str
     MAX_PIZZAS_PER_CLUSTER: int = 10
+    CLUSTER_TIME_WINDOW_MINUTES: int = 15
 
 
 class OpenRouteServiceSettings(BaseSettings):

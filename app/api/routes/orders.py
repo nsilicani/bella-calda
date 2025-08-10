@@ -1,9 +1,9 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 from typing_extensions import Annotated
 from datetime import datetime
 from functools import lru_cache
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import config
@@ -11,7 +11,8 @@ from app.models.user import User
 from app.models.order import Order
 from app.schemas import OrderCreate, OrderResponse, OrderOut
 from app.database import create_new_db_session
-from app.auth.dependencies import get_current_user  # You should define this
+from app.auth.dependencies import get_current_user
+from app.config_logging import logger
 from app.services.orders import OrdersOptimizer
 from app.services.route_planner.base import RoutePlannerService
 from app.services.route_planner.factory import get_route_planner
@@ -24,6 +25,11 @@ def get_settings():
     return config.Settings()
 
 
+@lru_cache
+def get_optimizer(db: Session = Depends(create_new_db_session)):
+    return OrdersOptimizer(db=db, logger=logger)
+
+
 # See https://fastapi.tiangolo.com/tutorial/response-model/#add-an-output-model
 @router.post("/order/", response_model=OrderResponse, status_code=201)
 def create_order(
@@ -33,7 +39,8 @@ def create_order(
     route_planner: RoutePlannerService = Depends(get_route_planner),
 ):
     # Geocode order address (fetching lat, lon) to fill model's fields
-    lat, lon = route_planner.get_coordinates(
+    # Return lon and lat
+    lon, lat = route_planner.get_coordinates(
         address=order_data.delivery_address.address,
         postal_code=order_data.delivery_address.postal_code,
         city=order_data.delivery_address.city,
@@ -61,26 +68,38 @@ def create_order(
 
 
 @router.post("/optimize", status_code=200)
-def optimize_orders(db: Session = Depends(create_new_db_session)):
+def optimize_orders(optimizer: OrdersOptimizer = Depends(get_optimizer)):
     try:
-        optimizer = OrdersOptimizer(db)
         optimizer.run()
         return {"detail": "Order optimization completed successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# TODO: add response_model=List[List[OrderOut]]
-@router.get("/clusters", response_model=List[List[OrderOut]])
-async def get_clustered_orders(
+@router.get("/clusters_by_time", response_model=Dict[datetime, List[OrderResponse]])
+async def get_clustered_orders_by_time(
     settings: Annotated[config.Settings, Depends(get_settings)],
-    db: Session = Depends(create_new_db_session),
-    route_planner: RoutePlannerService = Depends(get_route_planner),
+    optimizer: OrdersOptimizer = Depends(get_optimizer),
 ):
-    optimizer = OrdersOptimizer(db)
     ready_orders = optimizer.fetch_unassigned_orders()
     filtered = optimizer.filter_out_unavailable_orders(ready_orders)
-    clusters = await optimizer.cluster_orders(
+    time_buckets = await optimizer.cluster_orders_by_time_window(
+        orders=filtered,
+        time_window_minutes=settings.CLUSTER_TIME_WINDOW_MINUTES,
+    )
+    return time_buckets
+
+
+@router.get("/clusters", response_model=List[List[OrderResponse]])
+async def get_clustered_orders_by_geo(
+    settings: Annotated[config.Settings, Depends(get_settings)],
+    optimizer: OrdersOptimizer = Depends(get_optimizer),
+    route_planner: RoutePlannerService = Depends(get_route_planner),
+):
+    ready_orders = optimizer.fetch_unassigned_orders()
+    filtered = optimizer.filter_out_unavailable_orders(ready_orders)
+    logger.info(f"{filtered=}")
+    clusters = await optimizer.cluster_orders_by_geographic_proximity(
         route_planner=route_planner,
         orders=filtered,
         max_pizzas_per_cluster=settings.MAX_PIZZAS_PER_CLUSTER,
@@ -90,7 +109,7 @@ async def get_clustered_orders(
 
 @router.get("/available_orders", response_model=List[OrderOut])
 def get_available_orders(
-    db: Session = Depends(create_new_db_session),
+    optimizer: OrdersOptimizer = Depends(get_optimizer),
     start_time: Optional[datetime] = Query(None),
     end_time: Optional[datetime] = Query(None),
     lat: Optional[float] = Query(None),
@@ -104,7 +123,6 @@ def get_available_orders(
     - Location radius (lat, lon, radius_km)
     """
     try:
-        optimizer = OrdersOptimizer(db)
         ready_orders = optimizer.fetch_unassigned_orders()
         filtered_orders = optimizer.filter_out_unavailable_orders(
             ready_orders,

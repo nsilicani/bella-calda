@@ -291,3 +291,4 @@ fastapi run app/main.py
 - https://medium.com/@melthaw/using-pydantic-for-data-validation-with-sqlalchemy-b15e4497cfb4
 - https://github.com/fastapi/fastapi/discussions/8955
 - https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#using-context-managers-in-dependencies-with-yield
+- https://www.codingeasypeasy.com/blog/fastapi-dependency-injection-with-depends-reusable-dependencies-explained
