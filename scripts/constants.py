@@ -1,14 +1,17 @@
 from datetime import datetime, timedelta
 
+# Endpoints
 BASE_URL = "http://localhost:8000"
+SIGNUP_ENDPOINT = f"{BASE_URL}/api/v1/auth/signup"
 LOGIN_ENDPOINT = f"{BASE_URL}/api/v1/auth/login"
-CREATE_ORDER_ENDPOINT = f"{BASE_URL}/api/v1/orders/order/"
+ORDERS_ENDPOINT = f"{BASE_URL}/api/v1/orders/order/"
 ORDERS_OPTIMIZER_ENDPOINT = f"{BASE_URL}/api/v1/orders/optimize/"
 GET_AVAILABLE_ORDERS_ENDPOINT = f"{BASE_URL}/api/v1/orders/available_orders/"
 CLUSTER_BY_TIME_ENDPOINT = f"{BASE_URL}/api/v1/orders/clusters_by_time"
 CLUSTER_ENDPOINT = f"{BASE_URL}/api/v1/orders/clusters"
+DRIVERS_ENDPOINT = f"{BASE_URL}/api/v1/drivers/"
 
-
+# Test Order
 TEST_USERS = [
     {
         "email": "user@example.com",
@@ -42,6 +45,7 @@ ORDER_PAYLOAD = {
     "desired_delivery_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
 }
 
+# Test Clustering
 TEST_USERS_FOR_CLUSTERING = [
     {
         "email": "alice.rossi@example.com",
@@ -439,3 +443,67 @@ GEO_CLUSTERS = {
         "Via Raffaello Sanzio 4",
     ],
 }
+
+# Test Drivers
+TEST_USER_DRIVERS = [
+    {
+        "email": "driver1@example.com",
+        "password": "password123",
+        "full_name": "Test Driver One",
+        "role": "driver",
+    },
+    {
+        "email": "driver2@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Two",
+        "role": "driver",
+    },
+    {
+        "email": "driver3@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Three",
+        "role": "driver",
+    },
+    {
+        "email": "driver4@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Four",
+        "role": "driver",
+    },
+    {
+        "email": "driver5@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Five",
+        "role": "driver",
+    },
+    {
+        "email": "driver6@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Six",
+        "role": "driver",
+    },
+    {
+        "email": "driver7@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Seven",
+        "role": "driver",
+    },
+    {
+        "email": "driver8@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Eight",
+        "role": "driver",
+    },
+    {
+        "email": "driver9@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Nine",
+        "role": "driver",
+    },
+    {
+        "email": "driver10@example.com",
+        "password": "password123",
+        "full_name": "Test Driver Ten",
+        "role": "driver",
+    },
+]

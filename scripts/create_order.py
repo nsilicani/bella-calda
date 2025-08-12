@@ -2,10 +2,11 @@ import requests
 
 from constants import (
     LOGIN_ENDPOINT,
-    CREATE_ORDER_ENDPOINT,
+    ORDERS_ENDPOINT,
     ORDERS_OPTIMIZER_ENDPOINT,
     GET_AVAILABLE_ORDERS_ENDPOINT,
     CLUSTER_ENDPOINT,
+    DRIVERS_ENDPOINT,
     TEST_USERS_FOR_CLUSTERING,
     ORDER_PAYLOAD_FOR_CLUSTERING,
 )
@@ -29,7 +30,7 @@ def login(username, password):
 def create_order(token, order_payload):
     """Send authenticated request to create an order"""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    response = requests.post(CREATE_ORDER_ENDPOINT, json=order_payload, headers=headers)
+    response = requests.post(ORDERS_ENDPOINT, json=order_payload, headers=headers)
 
     print(f"Status Code: {response.status_code}")
     print("Response:")
@@ -62,6 +63,14 @@ def cluster_orders():
         print("\n")
 
 
+def list_drivers():
+    response_list_driver = requests.get(url=DRIVERS_ENDPOINT)
+    print(f"Status Code: {response_list_driver.status_code}")
+    print("Response:")
+    data = response_list_driver.json()
+    print(data)
+
+
 if __name__ == "__main__":
     for test_user in TEST_USERS_FOR_CLUSTERING:
         order_payload = ORDER_PAYLOAD_FOR_CLUSTERING[test_user["full_name"]]
@@ -71,3 +80,4 @@ if __name__ == "__main__":
     optimize_order()
     get_available_orders()
     cluster_orders()
+    list_drivers()

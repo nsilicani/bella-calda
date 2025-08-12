@@ -1,13 +1,22 @@
 from app.schemas.order import OrderResponse
-from scripts.constants import ORDER_PAYLOAD, GEO_CLUSTERS
+from scripts.constants import (
+    ORDER_PAYLOAD,
+    GEO_CLUSTERS,
+    TEST_USER_DRIVERS,
+    LOGIN_ENDPOINT,
+    ORDERS_ENDPOINT,
+    GET_AVAILABLE_ORDERS_ENDPOINT,
+    ORDERS_OPTIMIZER_ENDPOINT,
+    CLUSTER_ENDPOINT,
+    CLUSTER_BY_TIME_ENDPOINT,
+    DRIVERS_ENDPOINT,
+)
 
 
-def test_routes_create_order(client, create_users, base_url, user_credentials):
-    ENDPOINT_LOGIN = f"{base_url}/api/v1/auth/login"
-
+def test_routes_create_order(client, create_users, user_credentials):
     # Assert unauthorized
     unauthorized_response_login = client.post(
-        url=ENDPOINT_LOGIN,
+        url=LOGIN_ENDPOINT,
         data={
             "username": "user_not_in_db",
             "password": "wrong_password",
@@ -18,7 +27,7 @@ def test_routes_create_order(client, create_users, base_url, user_credentials):
 
     # Assert authorized and store access token
     response_login = client.post(
-        url=ENDPOINT_LOGIN,
+        url=LOGIN_ENDPOINT,
         data={
             "username": user_credentials["email"],
             "password": user_credentials["password"],
@@ -28,7 +37,6 @@ def test_routes_create_order(client, create_users, base_url, user_credentials):
     assert response_login.status_code == 200
     token = response_login.json()["access_token"]
 
-    ORDERS_ENDPOINT = f"{base_url}/api/v1/orders/order/"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     response_orders = client.post(
         url=ORDERS_ENDPOINT, json=ORDER_PAYLOAD, headers=headers
@@ -36,10 +44,7 @@ def test_routes_create_order(client, create_users, base_url, user_credentials):
     assert response_orders.status_code == 201
 
 
-def test_routes_order_get_available_orders(
-    client, base_url, create_users, create_orders
-):
-    GET_AVAILABLE_ORDERS_ENDPOINT = f"{base_url}/api/v1/orders/available_orders"
+def test_routes_order_get_available_orders(client, create_users, create_orders):
     # Test three parameters
     url = (
         GET_AVAILABLE_ORDERS_ENDPOINT
@@ -68,9 +73,8 @@ def test_routes_order_get_available_orders(
 
 
 def test_routes_clusters_by_time(
-    client, base_url, create_users_for_clustering, create_orders_for_clustering
+    client, create_users_for_clustering, create_orders_for_clustering
 ):
-    CLUSTER_BY_TIME_ENDPOINT = f"{base_url}/api/v1/orders/clusters_by_time"
     response_clusters = client.get(url=CLUSTER_BY_TIME_ENDPOINT)
     assert response_clusters.status_code == 200
     data = response_clusters.json()
@@ -84,9 +88,8 @@ def test_routes_clusters_by_time(
 
 
 def test_routes_clusters_by_geo(
-    client, base_url, create_users_for_clustering, create_orders_for_clustering
+    client, create_users_for_clustering, create_orders_for_clustering
 ):
-    CLUSTER_ENDPOINT = f"{base_url}/api/v1/orders/clusters"
     response_clusters = client.get(url=CLUSTER_ENDPOINT)
     assert response_clusters.status_code == 200
     data = response_clusters.json()
@@ -96,7 +99,13 @@ def test_routes_clusters_by_geo(
             assert order_out["delivery_address"]["address"] == order_in
 
 
-def test_routes_order_optimizer(client, base_url, create_users, create_orders):
-    ORDERS_OPTIMIZER_ENDPOINT = f"{base_url}/api/v1/orders/optimize/"
+def test_routes_order_optimizer(client, create_users, create_orders):
     response_optimze = client.post(url=ORDERS_OPTIMIZER_ENDPOINT)
     assert response_optimze.status_code == 200
+
+
+def test_routes_list_driver(client, create_user_drivers):
+    response_list_drivers = client.get(url=DRIVERS_ENDPOINT)
+    assert response_list_drivers.status_code == 200
+    data = response_list_drivers.json()
+    assert len(data) == len(TEST_USER_DRIVERS)

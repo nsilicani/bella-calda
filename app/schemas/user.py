@@ -16,4 +16,4 @@ class UserCreate(BaseModel):
     email: EmailStr
     full_name: str
     password: constr(min_length=6)
-    role: Literal["user", "staff", "admin"]
+    role: Literal["user", "staff", "admin", "driver"]
