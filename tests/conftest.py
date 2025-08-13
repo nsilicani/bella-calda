@@ -8,7 +8,9 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.database import Base, create_new_db_session
 from app.models import user, order, driver
+from app.models.driver import DriverStatus
 from app.models.user import User
+from app.schemas.driver import DriverUpdate
 from scripts.constants import (
     BASE_URL,
     TEST_USERS,
@@ -16,10 +18,12 @@ from scripts.constants import (
     TEST_USERS_FOR_CLUSTERING,
     ORDER_PAYLOAD_FOR_CLUSTERING,
     TEST_USER_DRIVERS,
+    NUMBER_UPDATE_DRIVERS,
     SIGNUP_ENDPOINT,
     LOGIN_ENDPOINT,
     ORDERS_ENDPOINT,
     DRIVERS_ENDPOINT,
+    DRIVER_UPDATE_ENDPOINT,
 )
 
 DATABASE_URL = "sqlite://"
@@ -175,13 +179,48 @@ def create_user_drivers(client, test_driver_users, session):
     create_users_utils(client=client, url=SIGNUP_ENDPOINT, users=test_driver_users)
     # Then, create driver by retrieving user id
     for user_credential in test_driver_users:
-        existing_user_id = (
+        existing_user = (
             session.query(User).filter(User.email == user_credential["email"]).first()
         )
         resp = client.post(
             url=DRIVERS_ENDPOINT,
-            json={
-                "user_id": existing_user_id.id,
-            },
+            json={"user_id": existing_user.id, "full_name": existing_user.full_name},
         )
         assert resp.status_code == 201
+
+
+@pytest.fixture
+def update_user_drivers(client):
+    updated_drivers = set()
+    response_list_drivers = client.get(url=DRIVERS_ENDPOINT)
+    data = response_list_drivers.json()
+
+    for driver in data:
+        if len(updated_drivers) >= NUMBER_UPDATE_DRIVERS:
+            break
+
+        driver_id = driver["id"]
+        driver_full_name = driver["full_name"]
+
+        # Find matching test driver
+        for i, test_driver in enumerate(TEST_USER_DRIVERS):
+            if (
+                driver_full_name == test_driver["full_name"]
+                and driver_full_name not in updated_drivers
+            ):
+                driver_update = DriverUpdate(
+                    is_active=True,
+                    status=DriverStatus.AVAILABLE,
+                    lat=45.46 + i * 0.01,
+                    lon=9.18 + i * 0.01,
+                    current_route=None,
+                    estimated_finish_time=None,
+                )
+
+                response_update_driver = client.patch(
+                    url=DRIVER_UPDATE_ENDPOINT.format(driver_id=driver_id),
+                    json=driver_update.model_dump(),
+                )
+                assert response_update_driver.status_code == 200
+                updated_drivers.add(driver_full_name)
+                break

@@ -12,6 +12,7 @@ class DriverStatus(str, Enum):
 
 class DriverBase(BaseModel):
     user_id: int
+    full_name: str
     is_active: bool = True
     status: DriverStatus = DriverStatus.AVAILABLE
     lat: Optional[float] = None

@@ -10,6 +10,8 @@ GET_AVAILABLE_ORDERS_ENDPOINT = f"{BASE_URL}/api/v1/orders/available_orders/"
 CLUSTER_BY_TIME_ENDPOINT = f"{BASE_URL}/api/v1/orders/clusters_by_time"
 CLUSTER_ENDPOINT = f"{BASE_URL}/api/v1/orders/clusters"
 DRIVERS_ENDPOINT = f"{BASE_URL}/api/v1/drivers/"
+DRIVER_UPDATE_ENDPOINT = f"{BASE_URL}/api/v1/drivers/{{driver_id}}"
+DRIVER_GET_AVAILABLE_ENDPOINT = f"{BASE_URL}/api/v1/drivers/available"
 
 # Test Order
 TEST_USERS = [
@@ -507,3 +509,4 @@ TEST_USER_DRIVERS = [
         "role": "driver",
     },
 ]
+NUMBER_UPDATE_DRIVERS = 5

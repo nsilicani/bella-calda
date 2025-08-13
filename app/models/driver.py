@@ -1,4 +1,14 @@
-from sqlalchemy import Column, Integer, Boolean, JSON, ForeignKey, Float, DateTime, Enum
+from sqlalchemy import (
+    Column,
+    Integer,
+    Boolean,
+    JSON,
+    ForeignKey,
+    Float,
+    DateTime,
+    Enum,
+    String,
+)
 from sqlalchemy.orm import relationship
 from app.database import Base
 import enum
@@ -16,6 +26,7 @@ class Driver(Base):
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    full_name = Column(String, nullable=False)
 
     is_active = Column(Boolean, default=True)
 

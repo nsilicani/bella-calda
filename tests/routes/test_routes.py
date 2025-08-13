@@ -1,8 +1,11 @@
+from app.models.driver import DriverStatus
+from app.schemas.driver import DriverUpdate
 from app.schemas.order import OrderResponse
 from scripts.constants import (
     ORDER_PAYLOAD,
     GEO_CLUSTERS,
     TEST_USER_DRIVERS,
+    NUMBER_UPDATE_DRIVERS,
     LOGIN_ENDPOINT,
     ORDERS_ENDPOINT,
     GET_AVAILABLE_ORDERS_ENDPOINT,
@@ -10,6 +13,8 @@ from scripts.constants import (
     CLUSTER_ENDPOINT,
     CLUSTER_BY_TIME_ENDPOINT,
     DRIVERS_ENDPOINT,
+    DRIVER_UPDATE_ENDPOINT,
+    DRIVER_GET_AVAILABLE_ENDPOINT,
 )
 
 
@@ -109,3 +114,43 @@ def test_routes_list_driver(client, create_user_drivers):
     assert response_list_drivers.status_code == 200
     data = response_list_drivers.json()
     assert len(data) == len(TEST_USER_DRIVERS)
+
+
+def test_routes_update_driver(client, create_user_drivers):
+    LAT = 45.46
+    LON = 9.18
+    driver_update = DriverUpdate(
+        is_active=True,
+        status=DriverStatus.DELIVERING,
+        lat=LAT,
+        lon=LON,
+        current_route=None,
+        estimated_finish_time=None,
+    )
+    # Fetch the first driver and store the driver ID
+    response_list_drivers = client.get(url=DRIVERS_ENDPOINT)
+    data = response_list_drivers.json()
+    first_driver = data[0]
+    first_driver_id = first_driver["id"]
+
+    # Update LAT and LON of the first driver with driver ID
+    response_update_driver = client.patch(
+        url=DRIVER_UPDATE_ENDPOINT.format(driver_id=first_driver_id),
+        json=driver_update.model_dump(),
+    )
+    assert response_update_driver.status_code == 200
+
+    # Check update
+    response_list_drivers = client.get(url=DRIVERS_ENDPOINT)
+    data = response_list_drivers.json()
+    first_driver = data[0]
+    assert first_driver["lat"] == LAT
+    assert first_driver["lon"] == LON
+
+
+def test_routes_get_available_drivers(client, create_user_drivers, update_user_drivers):
+    response_get_available_drivers = client.get(
+        url=DRIVER_GET_AVAILABLE_ENDPOINT,
+    )
+    assert response_get_available_drivers.status_code == 200
+    assert len(response_get_available_drivers.json()) == NUMBER_UPDATE_DRIVERS

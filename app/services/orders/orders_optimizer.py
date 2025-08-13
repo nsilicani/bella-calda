@@ -1,12 +1,13 @@
 from sqlalchemy.orm import Session
 from typing import Dict, List, Optional
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from logging import Logger
 
 from geopy.distance import geodesic
 from sklearn.cluster import AgglomerativeClustering
 
+from app.models.driver import Driver
 from app.models.order import Order
 from app.services.route_planner.base import RoutePlannerService
 
@@ -127,3 +128,31 @@ class OrdersOptimizer:
                 final_clusters.append(buffer)
 
         return final_clusters
+
+    def fetch_available_drivers_with_location(
+        self, eta_threshold_minutes: int = 10
+    ) -> List[Driver]:
+        """
+        Fetch drivers who are available or whose delivery will finish soon,
+        and have a known location.
+        """
+        now = datetime.utcnow()
+
+        drivers = (
+            self.db.query(Driver)
+            .filter(
+                (Driver.status == "available")
+                | (
+                    (Driver.status == "delivering")
+                    & (
+                        Driver.estimated_finish_time
+                        <= now + timedelta(minutes=eta_threshold_minutes)
+                    )
+                )
+            )
+            .filter(Driver.lat.isnot(None), Driver.lon.isnot(None))
+            .all()
+        )
+
+        self.logger.info(f"Fetched {len(drivers)} available drivers with location")
+        return drivers
