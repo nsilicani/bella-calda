@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field, constr, ConfigDict
 from datetime import datetime
 from typing import List, Optional
 from enum import Enum
@@ -54,8 +54,7 @@ class OrderResponse(BaseModel):
     desired_delivery_time: datetime
     priority: bool = False
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderOut(BaseModel):
@@ -65,5 +64,4 @@ class OrderOut(BaseModel):
     status: str
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

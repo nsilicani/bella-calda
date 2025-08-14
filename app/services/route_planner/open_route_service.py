@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 from .base import RoutePlannerService
 
 from openrouteservice import Client
@@ -57,5 +57,6 @@ class OpenRouteService(RoutePlannerService):
             format=format,
         )
 
-    def get_optimize_route(self) -> None:
-        pass
+    def get_optimize_route(self, order_locations: List[Tuple[float]]) -> None:
+        # TODO: implement method
+        return ["placeholder"]

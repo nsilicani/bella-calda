@@ -28,7 +28,7 @@ def get_clustering_settings():
 
 @lru_cache
 def get_optimizer(db: Session = Depends(create_new_db_session)):
-    return OrdersOptimizer(db=db, logger=logger)
+    return OrdersOptimizer(db=db, route_planner=get_route_planner(), logger=logger)
 
 
 # See https://fastapi.tiangolo.com/tutorial/response-model/#add-an-output-model
@@ -54,22 +54,22 @@ def create_order_in_db(
 
 
 @router.post("/optimize", status_code=200)
-def optimize_orders(optimizer: OrdersOptimizer = Depends(get_optimizer)):
+async def optimize_orders(optimizer: OrdersOptimizer = Depends(get_optimizer)):
     try:
-        optimizer.run()
+        await optimizer.run()
         return {"detail": "Order optimization completed successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/clusters_by_time", response_model=Dict[datetime, List[OrderResponse]])
-async def get_clustered_orders_by_time(
+def get_clustered_orders_by_time(
     clustering_settings: Annotated[config.Settings, Depends(get_clustering_settings)],
     optimizer: OrdersOptimizer = Depends(get_optimizer),
 ):
     ready_orders = optimizer.fetch_unassigned_orders()
     filtered = optimizer.filter_out_unavailable_orders(ready_orders)
-    time_buckets = await optimizer.cluster_orders_by_time_window(
+    time_buckets = optimizer.cluster_orders_by_time_window(
         orders=filtered,
         time_window_minutes=clustering_settings.CLUSTER_TIME_WINDOW_MINUTES,
     )
@@ -80,13 +80,11 @@ async def get_clustered_orders_by_time(
 async def get_clustered_orders_by_geo(
     clustering_settings: Annotated[config.Settings, Depends(get_clustering_settings)],
     optimizer: OrdersOptimizer = Depends(get_optimizer),
-    route_planner: RoutePlannerService = Depends(get_route_planner),
 ):
     ready_orders = optimizer.fetch_unassigned_orders()
     filtered = optimizer.filter_out_unavailable_orders(ready_orders)
     logger.info(f"{filtered=}")
     clusters = await optimizer.cluster_orders_by_geographic_proximity(
-        route_planner=route_planner,
         orders=filtered,
         max_pizzas_per_cluster=clustering_settings.MAX_PIZZAS_PER_CLUSTER,
         cluster_distance_threshold=clustering_settings.CLUSTER_DISTANCE_THRESHOLD,
