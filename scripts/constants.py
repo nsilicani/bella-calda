@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+
 # Endpoints
 BASE_URL = "http://localhost:8000"
 SIGNUP_ENDPOINT = f"{BASE_URL}/api/v1/auth/signup"
@@ -423,6 +424,12 @@ ORDER_PAYLOAD_FOR_CLUSTERING = {
         "desired_delivery_time": GROUP_D,
     },
 }
+for idx, fake_user in enumerate(ORDER_PAYLOAD_FOR_CLUSTERING):
+    ORDER_PAYLOAD_FOR_CLUSTERING[fake_user]["id"] = idx + 1
+    ORDER_PAYLOAD_FOR_CLUSTERING[fake_user]["creator_id"] = idx + 100
+    ORDER_PAYLOAD_FOR_CLUSTERING[fake_user]["status"] = "pending"
+    ORDER_PAYLOAD_FOR_CLUSTERING[fake_user]["created_at"] = str(now)
+    ORDER_PAYLOAD_FOR_CLUSTERING[fake_user]["priority"] = False
 
 GEO_CLUSTERS = {
     0: ["Piazza Duomo 24", "Piazza Duomo 26", "Piazza Duomo 28"],

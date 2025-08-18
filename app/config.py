@@ -36,6 +36,12 @@ class ClusteringSettings(BaseSettings):
     MAX_PIZZAS_PER_CLUSTER: int = 10
     CLUSTER_TIME_WINDOW_MINUTES: int = 15
     CLUSTER_DISTANCE_THRESHOLD: int = 120
+    START_LOCATION_LON: float
+    START_LOCATION_LAT: float
+    ADDRESS: str
+    POSTAL_CODE: str
+    CITY: str
+    COUNTRY: str
 
 
 class OpenRouteServiceSettings(BaseSettings):

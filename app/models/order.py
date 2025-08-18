@@ -27,7 +27,7 @@ class OrderStatus(str, enum.Enum):
 class Order(Base):
     __tablename__ = "orders"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, nullable=False)
     creator_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     customer_name = Column(String, nullable=True)
     customer_phone = Column(String, nullable=True)
@@ -36,8 +36,8 @@ class Order(Base):
     lon = Column(Float, nullable=False)
     desired_delivery_time = Column(DateTime, nullable=False)
     items = Column(JSON, nullable=False)  # dict from OrderItems
-    status = Column(Enum(OrderStatus), default=OrderStatus.pending)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(Enum(OrderStatus), default=OrderStatus.pending, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     estimated_prep_time = Column(Float, default=0.0)  # minutes
     priority = Column(Boolean, nullable=False, default=False)
 

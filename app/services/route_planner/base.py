@@ -34,3 +34,7 @@ class RoutePlannerService(ABC):
     @abstractmethod
     def get_optimize_route(self):
         pass
+
+    @abstractmethod
+    def format_direction_response(self, direction_response: dict) -> dict:
+        pass

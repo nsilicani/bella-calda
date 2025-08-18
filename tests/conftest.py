@@ -28,6 +28,10 @@ from scripts.constants import (
 
 DATABASE_URL = "sqlite://"
 
+pytest_plugins = [
+    "tests.fixtures.optimizer_fixtures",
+]
+
 
 # See: https://sqlmodel.tiangolo.com/tutorial/fastapi/tests/#client-fixture
 @pytest.fixture(name="session")

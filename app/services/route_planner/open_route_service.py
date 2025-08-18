@@ -46,17 +46,40 @@ class OpenRouteService(RoutePlannerService):
 
     def get_directions(
         self,
-        coord_from: str,
-        coord_to: str,
-        profile: str = "cycling-regular",
+        coordinates: List[Tuple[float]],
+        optimize_waypoints: bool,
         format: str = "geojson",
     ):
         return self.client.directions(
-            coordinates=[coord_from, coord_to],
-            profile=profile,  # can also use 'foot-walking', 'cycling-regular', 'driving-car'
+            coordinates=coordinates,
+            profile=self.profile,  # can also use 'foot-walking', 'cycling-regular', 'driving-car'
             format=format,
+            optimize_waypoints=optimize_waypoints,
+            preference="fastest",
         )
 
     def get_optimize_route(self, order_locations: List[Tuple[float]]) -> None:
         # TODO: implement method
-        return ["placeholder"]
+        pass
+
+    def format_direction_response(
+        self, coordinates: List[Tuple[float]], direction_response: dict
+    ) -> dict:
+        route = direction_response["routes"][0]
+        opt_route_coords = direction_response["metadata"]["query"]["coordinates"]
+        # Dict mapping the sorted visitated addresses to corresponding coords.
+        # Ex: {0: 3, 1: 2} means the first visited place is that located in coordinates with index 3 (i.e coordinates[3])
+        # NOTE: We exclude the first and last visited coords because driver stars and ends at pizza restaurant
+        visited_to_coord = {
+            i: coordinates[1:-1].index(tuple(visited))
+            for i, visited in enumerate(opt_route_coords[1:-1])
+        }
+        # NOTE: If coords are equal, then summary dict = {} and in each step distance and duration = 0.0
+        distance = route["summary"].get("distance", 0.0)
+        duration = route["summary"].get("duration", 0.0)
+        return dict(
+            route=route,
+            visited_to_coord=visited_to_coord,
+            distance=distance,
+            duration=duration,
+        )

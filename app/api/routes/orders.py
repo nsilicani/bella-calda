@@ -28,7 +28,12 @@ def get_clustering_settings():
 
 @lru_cache
 def get_optimizer(db: Session = Depends(create_new_db_session)):
-    return OrdersOptimizer(db=db, route_planner=get_route_planner(), logger=logger)
+    return OrdersOptimizer(
+        db=db,
+        route_planner=get_route_planner(),
+        clustering_settings=get_clustering_settings(),
+        logger=logger,
+    )
 
 
 # See https://fastapi.tiangolo.com/tutorial/response-model/#add-an-output-model
@@ -56,8 +61,16 @@ def create_order_in_db(
 @router.post("/optimize", status_code=200)
 async def optimize_orders(optimizer: OrdersOptimizer = Depends(get_optimizer)):
     try:
-        await optimizer.run()
-        return {"detail": "Order optimization completed successfully"}
+        clustered_orders = await optimizer.run()
+        for cluster in clustered_orders:
+            logger.info(f"Cluster id: {cluster.id}")
+            logger.info(f"time: {cluster.time_window}")
+            logger.info(f"total_items: {cluster.total_items}")
+            logger.info(f"earliest_delivery_time: {cluster.earliest_delivery_time}")
+            logger.info("\n")
+        return {
+            "detail": f"Order optimization completed successfully.\nNumber of Clusters: {len(clustered_orders)}"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

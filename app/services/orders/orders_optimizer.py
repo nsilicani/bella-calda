@@ -1,5 +1,7 @@
+import secrets
+
 from sqlalchemy.orm import Session
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 from datetime import datetime, timedelta
 from logging import Logger
@@ -7,17 +9,26 @@ from logging import Logger
 from geopy.distance import geodesic
 from sklearn.cluster import AgglomerativeClustering
 
+from app.config import ClusteringSettings
 from app.models.driver import Driver
 from app.models.order import Order
-from app.services.order_cluster import OrderCluster
+from app.schemas.cluster import ClusterRoute, OrderCluster, DeliveryStep, RouteSegment
+from app.schemas.order import DeliveryAddress, OrderResponse
 from app.services.route_planner.base import RoutePlannerService
 
 
 class OrdersOptimizer:
-    def __init__(self, db: Session, route_planner: RoutePlannerService, logger: Logger):
+    def __init__(
+        self,
+        db: Session,
+        route_planner: RoutePlannerService,
+        clustering_settings: ClusteringSettings,
+        logger: Logger,
+    ):
         self.db = db
-        self.logger = logger
         self.route_planner = route_planner
+        self.clustering_settings = clustering_settings
+        self.logger = logger
 
     async def run(self):
         ready_orders = self.fetch_unassigned_orders()
@@ -29,7 +40,8 @@ class OrdersOptimizer:
         clustered_orders = await self.compute_clustered_orders(
             filtered_orders=filtered_orders
         )
-        pass
+        # TODO: complete optimization process
+        return clustered_orders
 
     def fetch_unassigned_orders(self) -> List[Order]:
         return self.db.query(Order).filter(Order.status == "pending").all()
@@ -162,7 +174,9 @@ class OrdersOptimizer:
     def compute_total_items(self, orders: List[Order]) -> int:
         return sum([len(o.items["food"]) for o in orders])
 
-    async def compute_clustered_orders(self, filtered_orders: List[Order]):
+    async def compute_clustered_orders(
+        self, filtered_orders: List[Order]
+    ) -> List[OrderCluster]:
         clustered_orders = []
 
         # Cluster orders by time
@@ -179,9 +193,14 @@ class OrdersOptimizer:
             for geo_cluster in geo_clusters:
                 # Compute total items
                 total_items = self.compute_total_items(geo_cluster)
-                # Compute route optimization
-                cluster_route = self.route_planner.get_optimize_route(
-                    order_locations=[(o.lon, o.lat) for o in geo_cluster]
+
+                # Compute cluster_route
+                cluster_route = self.compute_cluster_route(
+                    orders=geo_cluster,
+                    start_location=(
+                        self.clustering_settings.START_LOCATION_LON,
+                        self.clustering_settings.START_LOCATION_LAT,
+                    ),
                 )
 
                 # Compute earliest delivery
@@ -190,11 +209,113 @@ class OrdersOptimizer:
                 )
                 # Store cluster
                 cluster_obj = OrderCluster(
+                    cluster_id=cluster_route.id,
                     time_window=time_window,
-                    orders=geo_cluster,
+                    orders=[OrderResponse.model_validate(o) for o in geo_cluster],
                     total_items=total_items,
                     earliest_delivery_time=earliest_delivery_time,
                     cluster_route=cluster_route,
                 )
                 clustered_orders.append(cluster_obj)
         return clustered_orders
+
+    def compute_cluster_route(
+        self, orders: List[Order], start_location: Tuple[float]
+    ) -> ClusterRoute:
+        # Building coordinates: driver starts and ends at pizza restaurant location (start_location)
+        coordinates = (
+            [start_location] + [(o.lon, o.lat) for o in orders] + [start_location]
+        )
+        # Setting starting location
+        PIZZA_RESTAURANT_BASE = DeliveryAddress(
+            address=self.clustering_settings.ADDRESS,
+            postal_code=self.clustering_settings.POSTAL_CODE,
+            city=self.clustering_settings.CITY,
+            country=self.clustering_settings.COUNTRY,
+        )
+
+        # Get directions
+        direction_response = self.route_planner.get_directions(
+            coordinates=coordinates, optimize_waypoints=True, format="json"
+        )
+        # Parse response
+        parsed_route = self.route_planner.format_direction_response(
+            coordinates=coordinates,
+            direction_response=direction_response,
+        )
+        route = parsed_route["route"]
+        visited_to_coord = parsed_route["visited_to_coord"]
+        duration_from_start = 0
+
+        route_segment_list = []
+        for visited_idx, segment in enumerate(route["segments"]):
+            segment_distance = segment["distance"]
+            segment_duration = segment["duration"]
+
+            # Storing steps
+            delivery_steps = []
+            for step in segment["steps"]:
+                step_name = step["name"]
+                step_distance = step["distance"]
+                step_duration = step["duration"]
+                duration_from_start += step_duration
+                step_instruction = step["instruction"]
+                step_way_points = step["way_points"]
+                step_type = step["type"]
+                delivery_step = DeliveryStep(
+                    name=step_name,
+                    type=step_type,
+                    distance=step_distance,
+                    duration=step_duration,
+                    duration_from_start=round(duration_from_start, 2),
+                    instruction=step_instruction,
+                    way_points=step_way_points,
+                )
+                delivery_steps.append(delivery_step)
+
+            # Setting segment start and end
+            if visited_idx == 0:
+                seg_start = PIZZA_RESTAURANT_BASE
+                seg_start_idx = None
+                seg_end_idx = visited_idx
+            elif visited_idx == len(route["segments"]) - 1:
+                seg_start_idx = visited_idx - 1
+                seg_end_idx = None
+                seg_end = PIZZA_RESTAURANT_BASE
+            else:
+                seg_start_idx = visited_idx - 1
+                seg_end_idx = visited_idx
+
+            idx_start_in_orders = (
+                visited_to_coord[seg_start_idx] if seg_start_idx is not None else None
+            )
+            idx_end_in_orders = (
+                visited_to_coord[seg_end_idx] if seg_end_idx is not None else None
+            )
+            seg_start = (
+                orders[idx_start_in_orders].delivery_address
+                if idx_start_in_orders is not None
+                else PIZZA_RESTAURANT_BASE
+            )
+            seg_end = (
+                orders[idx_end_in_orders].delivery_address
+                if idx_end_in_orders is not None
+                else PIZZA_RESTAURANT_BASE
+            )
+            # Storing segment
+            route_segment = RouteSegment(
+                distance=segment_distance,
+                duration=segment_duration,
+                steps=delivery_steps,
+                segment_start=seg_start,
+                segment_end=seg_end,
+                duration_from_start=round(duration_from_start, 2),
+                delivery_address=seg_end,
+            )
+            route_segment_list.append(route_segment)
+        return ClusterRoute(
+            id=secrets.token_hex(2),
+            distance=parsed_route["distance"],
+            duration=parsed_route["duration"],
+            segments=route_segment_list,
+        )

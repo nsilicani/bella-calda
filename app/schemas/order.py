@@ -26,6 +26,8 @@ class DeliveryAddress(BaseModel):
     def to_string(self) -> str:
         return f"{self.address}, {self.postal_code}, {self.city}, {self.country}"
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OrderItems(BaseModel):
     food: List[str]
