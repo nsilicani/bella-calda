@@ -27,11 +27,17 @@ def get_clustering_settings():
 
 
 @lru_cache
+def get_pizza_prep_settings():
+    return config.PizzaPreparationSettings()
+
+
+@lru_cache
 def get_optimizer(db: Session = Depends(create_new_db_session)):
     return OrdersOptimizer(
         db=db,
         route_planner=get_route_planner(),
         clustering_settings=get_clustering_settings(),
+        pizza_prep_settings=get_pizza_prep_settings(),
         logger=logger,
     )
 

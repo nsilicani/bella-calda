@@ -517,3 +517,25 @@ TEST_USER_DRIVERS = [
     },
 ]
 NUMBER_UPDATE_DRIVERS = 5
+
+# Latest pizza ready time test
+LATEST_PIZZA_READY_TIME_CONFS = {
+    "total_pizzas": 24,
+    "chefs": 2,
+    "chef_experience": "senior",
+    "chef_capacity": {
+        "junior": 3,
+        "middle": 4,
+        "senior": 5,
+    },
+    "bake_times": {
+        "ruota_di_carro_napoletana": 70,
+        "napoletana": 90,
+        "contemporanea": 120,
+        "classica": 180,
+    },
+    "num_ovens": 2,
+    "single_oven_capacity": 5,
+    "pizza_type": "contemporanea",
+    "estimate_latest_pizza_ready_time": 8.0,
+}

@@ -1,8 +1,9 @@
 import os
 import secrets
+from typing import Dict, Any
 from dotenv import load_dotenv
 
-from pydantic import BaseModel
+from enum import Enum
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
@@ -42,6 +43,31 @@ class ClusteringSettings(BaseSettings):
     POSTAL_CODE: str
     CITY: str
     COUNTRY: str
+    ETA_THRESHOLD_MINUTES: int = 10
+
+
+class ChefExperience(str, Enum):
+    JUNIOR = "junior"
+    MIDDLE = "middle"
+    SENIOR = "senior"
+
+
+class PizzaType(str, Enum):
+    RUOTA_DI_CARRO = "ruota_di_carro_napoletana"
+    NAPOLETANA = "napoletana"
+    CONTEMPORANEA = "contemporanea"
+    CLASSICA = "classica"
+
+
+class PizzaPreparationSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="PIZZA_PREPARATION_SETTINGS__")
+    CHEFS: int
+    CHEF_EXPERIENCE: ChefExperience
+    CHEF_CAPACITY: Dict[str, int]
+    BAKE_TIMES: Dict[str, int]
+    NUM_OVENS: int
+    SINGLE_OVEN_CAPACITY: int
+    PIZZA_TYPE: PizzaType
 
 
 class OpenRouteServiceSettings(BaseSettings):

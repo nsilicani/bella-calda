@@ -105,7 +105,11 @@ def test_routes_clusters_by_geo(
 
 
 def test_routes_order_optimizer(
-    client, create_users_for_clustering, create_orders_for_clustering
+    client,
+    create_users_for_clustering,
+    create_orders_for_clustering,
+    create_user_drivers,
+    update_user_drivers,
 ):
     response_optimze = client.post(url=ORDERS_OPTIMIZER_ENDPOINT)
     assert response_optimze.status_code == 200

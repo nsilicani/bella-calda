@@ -3,7 +3,7 @@ import logging
 
 from datetime import datetime
 
-from app.config import ClusteringSettings
+from app.config import ClusteringSettings, PizzaPreparationSettings
 from app.models.order import Order
 from app.services.orders.orders_optimizer import OrdersOptimizer
 from app.services.route_planner.factory import get_route_planner
@@ -64,7 +64,7 @@ def orders_fixture(locations):
 
 
 @pytest.fixture(name="orders_optimizer")
-def optimizer_fixure(session, locations, logger):
+def optimizer_fixure(session, locations, logger, latest_pizza_ready_time_confs):
     clustering_settings = ClusteringSettings(
         MAX_PIZZAS_PER_CLUSTER=10,
         CLUSTER_TIME_WINDOW_MINUTES=15,
@@ -76,10 +76,17 @@ def optimizer_fixure(session, locations, logger):
         CITY="Milan",
         COUNTRY="Italy",
     )
+    pizza_prep_settings_dict = {
+        k.upper(): v
+        for k, v in latest_pizza_ready_time_confs.items()
+        if k not in ["total_pizzas", "estimate_latest_pizza_ready_time"]
+    }
+    pizza_prep_settings = PizzaPreparationSettings(**pizza_prep_settings_dict)
     orders_optimizer = OrdersOptimizer(
         db=session,
         logger=logger,
         route_planner=get_route_planner(),
         clustering_settings=clustering_settings,
+        pizza_prep_settings=pizza_prep_settings,
     )
     return orders_optimizer

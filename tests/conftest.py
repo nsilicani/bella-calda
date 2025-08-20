@@ -12,7 +12,6 @@ from app.models.driver import DriverStatus
 from app.models.user import User
 from app.schemas.driver import DriverUpdate
 from scripts.constants import (
-    BASE_URL,
     TEST_USERS,
     ORDER_PAYLOAD,
     TEST_USERS_FOR_CLUSTERING,
@@ -24,6 +23,7 @@ from scripts.constants import (
     ORDERS_ENDPOINT,
     DRIVERS_ENDPOINT,
     DRIVER_UPDATE_ENDPOINT,
+    LATEST_PIZZA_READY_TIME_CONFS,
 )
 
 DATABASE_URL = "sqlite://"
@@ -228,3 +228,8 @@ def update_user_drivers(client):
                 assert response_update_driver.status_code == 200
                 updated_drivers.add(driver_full_name)
                 break
+
+
+@pytest.fixture
+def latest_pizza_ready_time_confs():
+    return LATEST_PIZZA_READY_TIME_CONFS

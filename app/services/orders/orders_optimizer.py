@@ -1,7 +1,7 @@
 import secrets
 
 from sqlalchemy.orm import Session
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 from datetime import datetime, timedelta
 from logging import Logger
@@ -9,7 +9,7 @@ from logging import Logger
 from geopy.distance import geodesic
 from sklearn.cluster import AgglomerativeClustering
 
-from app.config import ClusteringSettings
+from app.config import ClusteringSettings, PizzaPreparationSettings
 from app.models.driver import Driver
 from app.models.order import Order
 from app.schemas.cluster import ClusterRoute, OrderCluster, DeliveryStep, RouteSegment
@@ -23,11 +23,13 @@ class OrdersOptimizer:
         db: Session,
         route_planner: RoutePlannerService,
         clustering_settings: ClusteringSettings,
+        pizza_prep_settings: PizzaPreparationSettings,
         logger: Logger,
     ):
         self.db = db
         self.route_planner = route_planner
         self.clustering_settings = clustering_settings
+        self.pizza_prep_settings = pizza_prep_settings
         self.logger = logger
 
     async def run(self):
@@ -40,8 +42,77 @@ class OrdersOptimizer:
         clustered_orders = await self.compute_clustered_orders(
             filtered_orders=filtered_orders
         )
-        # TODO: complete optimization process
-        return clustered_orders
+        sorted_clusters = sorted(
+            clustered_orders, key=lambda x: x.earliest_delivery_time
+        )
+        available_drivers = self.fetch_available_drivers_with_location(
+            eta_threshold_minutes=self.clustering_settings.ETA_THRESHOLD_MINUTES
+        )
+
+        current_time = datetime.utcnow()
+        for cluster in sorted_clusters:
+            latest_prep_time = self.estimate_latest_pizza_ready_time(
+                total_pizzas=cluster.total_items,
+                chefs=self.pizza_prep_settings.CHEFS,
+                chef_experience=self.pizza_prep_settings.CHEF_EXPERIENCE,
+                chef_capacity=self.pizza_prep_settings.CHEF_CAPACITY,
+                bake_times=self.pizza_prep_settings.BAKE_TIMES,
+                num_ovens=self.pizza_prep_settings.NUM_OVENS,
+                single_oven_capacity=self.pizza_prep_settings.SINGLE_OVEN_CAPACITY,
+                pizza_type=self.pizza_prep_settings.PIZZA_TYPE,
+                now=current_time,
+            )
+            dispatch_ready_time = max(current_time, latest_prep_time)
+            best_driver = None
+            lowest_cost = float("inf")
+
+            for driver in available_drivers:
+                driver_ready_time = (
+                    current_time - driver.estimated_finish_time
+                    if driver.estimated_finish_time
+                    else current_time
+                )
+
+                wait_time = max(
+                    timedelta(seconds=0), dispatch_ready_time - driver_ready_time
+                )
+                delivery_estimates = self.simulate_delivery_times(
+                    cluster=cluster,
+                    dispatch_ready_time=dispatch_ready_time,
+                    time_for_payment=timedelta(seconds=120),
+                )
+                # Hotness constraint: All orders must be delivered within 20 minutes after being baked
+                if any(
+                    [
+                        delivery_estimate["delivery_time"] - dispatch_ready_time
+                        > timedelta(seconds=60 * 20)
+                        for delivery_estimate in delivery_estimates.values()
+                    ]
+                ):
+                    continue
+
+                # TODO: Set weights in configs
+                cost = self.compute_assignment_cost(
+                    wait_time=wait_time,
+                    delivery_times=delivery_estimates,
+                    route_duration=cluster.cluster_route.duration,
+                    weight_wait_time=0.2,
+                    weight_max_lateness=0.5,
+                    weight_route_duration=0.3,
+                )
+                if cost < lowest_cost:
+                    best_driver = driver
+                    lower_cost = cost
+            if best_driver is not None:
+                # assign_cluster_to_driver
+                # mark_driver_as_unavailable
+                # update_orders_as_assigned
+                self.logger.info(f"Driver: {driver.full_name} -> Cluster: {cluster.id}")
+            else:
+                # defer_cluster_for_next_batch
+                self.logger.info(f"Defer Cluster: {cluster.id} for the next batch")
+                pass
+        return sorted_clusters
 
     def fetch_unassigned_orders(self) -> List[Order]:
         return self.db.query(Order).filter(Order.status == "pending").all()
@@ -318,4 +389,120 @@ class OrdersOptimizer:
             distance=parsed_route["distance"],
             duration=parsed_route["duration"],
             segments=route_segment_list,
+        )
+
+    def estimate_latest_pizza_ready_time(
+        self,
+        total_pizzas: int,
+        chefs: int,
+        chef_experience: str,
+        chef_capacity: Dict[str, int],
+        bake_times: Dict[str, int],
+        num_ovens: int,
+        single_oven_capacity: int,
+        pizza_type: str,
+        now: datetime,
+    ) -> datetime:
+        """
+        Compute when all pizzas in a cluster will be ready (prep + bake).
+        Assumes the pizzeria only makes ONE type of pizza (pizza_type).
+        """
+
+        # --- Step 1. Count pizzas ---
+        if total_pizzas == 0:
+            return now
+
+        # --- Step 2. Prep capacity ---
+        base_capacity = chef_capacity[chef_experience]
+
+        if chefs == 1:
+            prep_capacity = base_capacity
+        elif chefs == 2:
+            prep_capacity = base_capacity * 3  # nonlinear boost for 2 chefs
+        else:
+            prep_capacity = base_capacity * chefs  # assume linear for >2
+
+        prep_cycle_time = 120  # seconds per prep cycle
+
+        # --- Step 3. Prep finish times ---
+        prep_finish_times = []
+        pizzas_remaining = total_pizzas
+        t = prep_cycle_time
+        while pizzas_remaining > 0:
+            batch = min(prep_capacity, pizzas_remaining)
+            prep_finish_times.extend([t] * batch)
+            pizzas_remaining -= batch
+            t += prep_cycle_time
+
+        prep_finish_times.sort()
+
+        # --- Step 4. Baking phase ---
+        bake_time = bake_times[pizza_type]
+        oven_capacity = num_ovens * single_oven_capacity
+        oven_next_free = 0  # when ovens are next available
+        finish_times = []
+
+        # Process pizzas in oven batches
+        i = 0
+        while i < len(prep_finish_times):
+            batch_ready_time = max(prep_finish_times[i : i + oven_capacity])
+            start_time = max(batch_ready_time, oven_next_free)
+            finish_time = start_time + bake_time
+            finish_times.append(finish_time)
+
+            # update state
+            oven_next_free = finish_time
+            i += oven_capacity
+
+        latest_finish = max(finish_times)
+        return now + timedelta(seconds=latest_finish)
+
+    def simulate_delivery_times(
+        self,
+        cluster: OrderCluster,
+        dispatch_ready_time: datetime,
+        time_for_payment: timedelta = timedelta(seconds=60),
+    ) -> Dict[int, dict]:
+        """
+        Simulate delivery times for each order (segment) in the cluster. Return a dict mapping order id to delivery time and desidered delivery time
+        """
+        cumulative_time = 0
+        delivery_times_dict = dict()
+        assert len(cluster.orders) == len(
+            cluster.cluster_route.segments[:-1]
+        )  # Exclude last segment because it is the return to pizzeria (starting point)
+        for order, segment in zip(cluster.orders, cluster.cluster_route.segments[:-1]):
+            delivery_times_dict[order.id] = dict()
+            cumulative_time += segment.duration
+            delivery_time = dispatch_ready_time + timedelta(seconds=cumulative_time)
+            # Compute time for payment
+            delivery_time += time_for_payment
+            delivery_times_dict[order.id]["delivery_time"] = delivery_time
+            delivery_times_dict[order.id]["desired_delivery_time"] = (
+                order.desired_delivery_time
+            )
+            lateness = (
+                (delivery_time - order.desired_delivery_time).seconds
+                if delivery_time > order.desired_delivery_time
+                else 0.0
+            )
+            delivery_times_dict[order.id]["lateness"] = lateness
+        return delivery_times_dict
+
+    def compute_assignment_cost(
+        self,
+        wait_time,
+        delivery_times,
+        route_duration,
+        weight_wait_time: float,
+        weight_max_lateness: float,
+        weight_route_duration: float,
+    ) -> float:
+        max_lateness = max(
+            delivery_time["lateness"] for delivery_time in delivery_times.values()
+        )
+        return (
+            weight_wait_time * wait_time.seconds
+            + weight_max_lateness * max_lateness
+            + weight_route_duration * route_duration
         )
