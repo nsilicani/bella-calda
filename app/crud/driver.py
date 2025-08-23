@@ -10,6 +10,9 @@ def create_driver(*, db: Session, driver_data: DriverCreate):
         full_name=driver_data.full_name,
         is_active=driver_data.is_active,
         current_route=driver_data.current_route,
+        status=driver_data.status,
+        lat=driver_data.lat,
+        lon=driver_data.lon,
     )
     db.add(new_driver)
     db.commit()

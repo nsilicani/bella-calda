@@ -41,14 +41,18 @@ def optimize_order():
     response_optimze = requests.post(url=ORDERS_OPTIMIZER_ENDPOINT)
     print(f"Status Code: {response_optimze.status_code}")
     print("Response:")
-    print(response_optimze.json())
+    data = response_optimze.json()
+    print(data)
+    return data
 
 
 def get_available_orders():
     response_get_available_orders = requests.get(url=GET_AVAILABLE_ORDERS_ENDPOINT)
     print(f"Status Code: {response_get_available_orders.status_code}")
     print("Response:")
-    print(response_get_available_orders.json())
+    data = response_get_available_orders.json()
+    print(data)
+    return data
 
 
 def cluster_orders():
@@ -61,6 +65,7 @@ def cluster_orders():
         for order in cluster:
             print(order["delivery_address"], order)
         print("\n")
+    return data
 
 
 def list_drivers():
@@ -69,6 +74,7 @@ def list_drivers():
     print("Response:")
     data = response_list_driver.json()
     print(data)
+    return data
 
 
 if __name__ == "__main__":
@@ -77,7 +83,7 @@ if __name__ == "__main__":
         token = login(username=test_user["email"], password=test_user["password"])
         create_order(token=token, order_payload=order_payload)
     print("***" * 20)
-    optimize_order()
-    get_available_orders()
-    cluster_orders()
-    list_drivers()
+    _ = optimize_order()
+    _ = get_available_orders()
+    _ = cluster_orders()
+    _ = list_drivers()

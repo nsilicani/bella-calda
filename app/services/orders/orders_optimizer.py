@@ -9,8 +9,11 @@ from logging import Logger
 from geopy.distance import geodesic
 from sklearn.cluster import AgglomerativeClustering
 
+from scipy.optimize import linear_sum_assignment
+import numpy as np
+
 from app.config import ClusteringSettings, PizzaPreparationSettings
-from app.models.driver import Driver
+from app.models.driver import Driver, DriverStatus
 from app.models.order import Order
 from app.schemas.cluster import ClusterRoute, OrderCluster, DeliveryStep, RouteSegment
 from app.schemas.order import DeliveryAddress, OrderResponse
@@ -33,24 +36,40 @@ class OrdersOptimizer:
         self.logger = logger
 
     async def run(self):
+        # 1) Prepare inputs
         ready_orders = self.fetch_unassigned_orders()
         filtered_orders = self.filter_out_unavailable_orders(ready_orders)
-
         self.logger.info(
             f"Fetched {len(ready_orders)} orders, {len(filtered_orders)} after filtering."
         )
+
         clustered_orders = await self.compute_clustered_orders(
             filtered_orders=filtered_orders
         )
-        sorted_clusters = sorted(
-            clustered_orders, key=lambda x: x.earliest_delivery_time
-        )
-        available_drivers = self.fetch_available_drivers_with_location(
+        clusters = sorted(clustered_orders, key=lambda x: x.earliest_delivery_time)
+        drivers = self.fetch_available_drivers_with_location(
             eta_threshold_minutes=self.clustering_settings.ETA_THRESHOLD_MINUTES
+        )
+        self.logger.info(
+            f"Total Clusters: {len(clusters)} | Available Drivers: {len(drivers)}"
         )
 
         current_time = datetime.utcnow()
-        for cluster in sorted_clusters:
+        D, C = len(drivers), len(clusters)
+        if D == 0 or C == 0:
+            # Nothing to assign
+            return {
+                "driver_to_cluster": {},
+                "unassigned_clusters": {
+                    c.id: {"motivations": "No drivers or no clusters"}
+                },
+            }
+
+        # 2) Build rectangular cost matrix with NaNs for infeasible pairs
+        costs = np.full((D, C), np.nan, dtype=float)
+        motivations = {}  # (driver_id, cluster_id) -> reason/feasible
+
+        for j, cluster in enumerate(clusters):
             latest_prep_time = self.estimate_latest_pizza_ready_time(
                 total_pizzas=cluster.total_items,
                 chefs=self.pizza_prep_settings.CHEFS,
@@ -63,35 +82,33 @@ class OrdersOptimizer:
                 now=current_time,
             )
             dispatch_ready_time = max(current_time, latest_prep_time)
-            best_driver = None
-            lowest_cost = float("inf")
 
-            for driver in available_drivers:
+            for i, driver in enumerate(drivers):
                 driver_ready_time = (
                     current_time - driver.estimated_finish_time
-                    if driver.estimated_finish_time
+                    if getattr(driver, "estimated_finish_time", None)
                     else current_time
                 )
+                wait_time = max(timedelta(0), dispatch_ready_time - driver_ready_time)
 
-                wait_time = max(
-                    timedelta(seconds=0), dispatch_ready_time - driver_ready_time
-                )
                 delivery_estimates = self.simulate_delivery_times(
                     cluster=cluster,
                     dispatch_ready_time=dispatch_ready_time,
                     time_for_payment=timedelta(seconds=120),
                 )
-                # Hotness constraint: All orders must be delivered within 20 minutes after being baked
-                if any(
-                    [
-                        delivery_estimate["delivery_time"] - dispatch_ready_time
-                        > timedelta(seconds=60 * 20)
-                        for delivery_estimate in delivery_estimates.values()
-                    ]
-                ):
+
+                # Hotness constraint: 20 minutes max from bake/dispatch to drop
+                violates_hotness = any(
+                    est["delivery_time"] - dispatch_ready_time > timedelta(minutes=20)
+                    for est in delivery_estimates.values()
+                )
+                if violates_hotness:
+                    motivations[(driver.id, cluster.id)] = "Hotness constraint not met"
+                    # leave as NaN (infeasible)
                     continue
 
-                # TODO: Set weights in configs
+                # Compute finite cost
+                # TODO: pass weights as config
                 cost = self.compute_assignment_cost(
                     wait_time=wait_time,
                     delivery_times=delivery_estimates,
@@ -100,19 +117,71 @@ class OrdersOptimizer:
                     weight_max_lateness=0.5,
                     weight_route_duration=0.3,
                 )
-                if cost < lowest_cost:
-                    best_driver = driver
-                    lower_cost = cost
-            if best_driver is not None:
-                # assign_cluster_to_driver
-                # mark_driver_as_unavailable
-                # update_orders_as_assigned
-                self.logger.info(f"Driver: {driver.full_name} -> Cluster: {cluster.id}")
+                costs[i, j] = float(cost)
+                motivations[(driver.id, cluster.id)] = "Feasible"
+
+        # 3) Replace NaNs with a large finite penalty (Big-M), solve assignment
+        #    Big-M must dominate any real cost. Derive from observed finite costs.
+        finite_vals = costs[np.isfinite(costs)]
+        if finite_vals.size == 0:
+            # No feasible pairs at all: everyone unassigned
+            self.logger.info(
+                "No feasible (driver, cluster) pairs. Deferring all clusters."
+            )
+            return {
+                "driver_to_cluster": {},
+                "unassigned_clusters": {
+                    c.id: {"motivations": "No feasible driver"} for c in clusters
+                },
+            }
+
+        max_real_cost = float(np.max(finite_vals))
+        BIG_M = max(1.0, max_real_cost) * 1e6  # huge, but finite
+        filled_costs = np.where(np.isfinite(costs), costs, BIG_M)
+
+        # NOTE: linear_sum_assignment accepts rectangular matrices.
+        row_ind, col_ind = linear_sum_assignment(filled_costs)
+
+        # 4) Post-process: anything that hit BIG_M is treated as unassigned
+        driver_to_cluster = {}
+        unassigned_clusters = {}
+
+        assigned_cluster_idx = set()
+        for i, j in zip(row_ind, col_ind):
+            driver = drivers[i]
+            cluster = clusters[j]
+            cost_ij = filled_costs[i, j]
+
+            if cost_ij >= BIG_M:  # infeasible -> do NOT assign
+                # Mark this cluster as still unassigned; driver remains idle.
+                unassigned_clusters[cluster.id] = {
+                    "motivations": motivations.get(
+                        (driver.id, cluster.id), "No feasible driver"
+                    )
+                }
+                self.logger.info(
+                    f"Defer Cluster {cluster.id} (infeasible for all drivers)."
+                )
             else:
-                # defer_cluster_for_next_batch
-                self.logger.info(f"Defer Cluster: {cluster.id} for the next batch")
-                pass
-        return sorted_clusters
+                driver_to_cluster[driver.id] = {
+                    "cluster": cluster,
+                    "cost": float(cost_ij),
+                }
+                assigned_cluster_idx.add(j)
+                self.logger.info(
+                    f"Assign Driver: {driver.full_name} -> Cluster: {cluster.id} | Cost: {cost_ij:.2f}"
+                )
+
+        # 5) Any cluster not selected at all (when D < C) is unassigned
+        for j, cluster in enumerate(clusters):
+            if j not in assigned_cluster_idx and cluster.id not in unassigned_clusters:
+                unassigned_clusters[cluster.id] = {"motivations": "No driver available"}
+                self.logger.info(f"Cluster {cluster.id} deferred (not enough drivers).")
+
+        return {
+            "driver_to_cluster": driver_to_cluster,
+            "unassigned_clusters": unassigned_clusters,
+        }
 
     def fetch_unassigned_orders(self) -> List[Order]:
         return self.db.query(Order).filter(Order.status == "pending").all()
@@ -226,9 +295,9 @@ class OrdersOptimizer:
         drivers = (
             self.db.query(Driver)
             .filter(
-                (Driver.status == "available")
+                (Driver.status == DriverStatus.AVAILABLE)
                 | (
-                    (Driver.status == "delivering")
+                    (Driver.status == DriverStatus.DELIVERING)
                     & (
                         Driver.estimated_finish_time
                         <= now + timedelta(minutes=eta_threshold_minutes)
@@ -238,6 +307,7 @@ class OrdersOptimizer:
             .filter(Driver.lat.isnot(None), Driver.lon.isnot(None))
             .all()
         )
+        # drivers = self.db.query(Driver).all()
 
         self.logger.info(f"Fetched {len(drivers)} available drivers with location")
         return drivers

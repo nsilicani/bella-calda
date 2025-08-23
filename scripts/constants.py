@@ -180,7 +180,7 @@ GROUP_B = (now + timedelta(hours=1, minutes=15)).isoformat()
 GROUP_C = (now + timedelta(hours=1, minutes=30)).isoformat()
 GROUP_D = (now + timedelta(hours=1, minutes=45)).isoformat()
 
-# NOTE: openrouteservice fails in geocoding Via Torino 12 and 34. Hence, we set onl "Via Torino"
+# NOTE: openrouteservice fails in geocoding Via Torino 12 and 34. Hence, we set only "Via Torino"
 # TODO: user google-maps-api for more accurate geocoding
 ORDER_PAYLOAD_FOR_CLUSTERING = {
     "Alice Rossi": {

@@ -67,15 +67,19 @@ def create_order_in_db(
 @router.post("/optimize", status_code=200)
 async def optimize_orders(optimizer: OrdersOptimizer = Depends(get_optimizer)):
     try:
-        clustered_orders = await optimizer.run()
-        for cluster in clustered_orders:
-            logger.info(f"Cluster id: {cluster.id}")
-            logger.info(f"time: {cluster.time_window}")
-            logger.info(f"total_items: {cluster.total_items}")
-            logger.info(f"earliest_delivery_time: {cluster.earliest_delivery_time}")
-            logger.info("\n")
+        out = await optimizer.run()
+        clustered_orders = out["driver_to_cluster"].items()
+        for driver, cluster in clustered_orders:
+            cluster_order = cluster["cluster"]
+            assignment_cost = cluster["cost"]
+            logger.info(
+                f"Driver : {driver} assigned to cluster: {cluster_order.id} with cost: {assignment_cost}"
+            )
+        unassigned = out["unassigned_clusters"]
+        logger.info(f"Unassigned Clusters: {len(unassigned)}")
         return {
-            "detail": f"Order optimization completed successfully.\nNumber of Clusters: {len(clustered_orders)}"
+            "detail": f"Order optimization completed successfully. Number of Clusters: {len(clustered_orders)}. Unassigned Clusters: {len(unassigned)}",
+            "unassigned": unassigned,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

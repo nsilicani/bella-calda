@@ -9,6 +9,7 @@ dependencies = [
     "fastapi[standard]>=0.116.1",
     "folium>=0.20.0",
     "geopy>=2.4.1",
+    "numpy>=2.3.2",
     "openrouteservice>=2.3.3",
     "passlib[bcrypt]>=1.7.4",
     "psycopg2-binary>=2.9.10",
@@ -17,12 +18,17 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "ruff>=0.12.5",
     "scikit-learn>=1.7.1",
+    "scipy>=1.16.1",
     "sqlalchemy>=2.0.42",
 ]
 
 [dependency-groups]
 dev = [
+    "faker>=37.5.3",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.1",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "requests>=2.32.4",
+    "tqdm>=4.67.1",
 ]
