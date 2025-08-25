@@ -1,6 +1,7 @@
+from typing import List
 from sqlalchemy.orm import Session
 
-from app.models.order import Order
+from app.models.order import Order, OrderStatus
 from app.models.user import User
 from app.schemas.order import OrderCreate
 
@@ -23,3 +24,10 @@ def create_order(
     db.commit()
     db.refresh(new_order)
     return new_order
+
+
+def update_order_status(*, db: Session, order_ids: List[int]) -> None:
+    db.query(Order).filter(Order.id.in_(order_ids)).update(
+        {Order.status: OrderStatus.assigned}, synchronize_session=False
+    )
+    db.commit()

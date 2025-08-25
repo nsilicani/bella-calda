@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.main import app
 from app.database import Base, create_new_db_session
-from app.models import user, order, driver
+from app.models import cluster, user, order, driver
 from app.models.driver import DriverStatus
 from app.models.user import User
 from app.schemas.driver import DriverUpdate

@@ -56,3 +56,7 @@ class OrderCluster(BaseModel):
         Extract (lat, lon) for each order.
         """
         return [(order.lat, order.lon) for order in self.orders]
+
+    @property
+    def get_order_ids(self) -> List[int]:
+        return [order.id for order in self.orders]

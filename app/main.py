@@ -6,6 +6,7 @@ from fastapi.routing import APIRoute
 from app.api.main import api_router
 from app.database import create_db_and_tables
 from app.models import (
+    cluster,
     driver,
     order,
     user,

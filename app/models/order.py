@@ -12,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
+from app.models.cluster import order_cluster_association
 import enum
 
 
@@ -42,3 +43,10 @@ class Order(Base):
     priority = Column(Boolean, nullable=False, default=False)
 
     creator = relationship("User", backref="orders")
+
+    # Many-to-many relationship
+    clusters = relationship(
+        "OrderCluster",
+        secondary="order_cluster_association",
+        back_populates="orders",
+    )

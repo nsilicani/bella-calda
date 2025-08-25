@@ -13,6 +13,8 @@ from scipy.optimize import linear_sum_assignment
 import numpy as np
 
 from app.config import ClusteringSettings, PizzaPreparationSettings
+from app.crud.cluster import create_cluster
+from app.crud.order import update_order_status
 from app.models.driver import Driver, DriverStatus
 from app.models.order import Order
 from app.schemas.cluster import ClusterRoute, OrderCluster, DeliveryStep, RouteSegment
@@ -47,6 +49,9 @@ class OrdersOptimizer:
             filtered_orders=filtered_orders
         )
         clusters = sorted(clustered_orders, key=lambda x: x.earliest_delivery_time)
+        # Persist clusters in DB. TODO: add "status" field in cluster model
+        for c in clusters:
+            new_cluster = create_cluster(db=self.db, order_cluster=c)
         drivers = self.fetch_available_drivers_with_location(
             eta_threshold_minutes=self.clustering_settings.ETA_THRESHOLD_MINUTES
         )
@@ -56,12 +61,19 @@ class OrdersOptimizer:
 
         current_time = datetime.utcnow()
         D, C = len(drivers), len(clusters)
-        if D == 0 or C == 0:
-            # Nothing to assign
+        # No clusters -> nothing to do
+        if C == 0:
+            self.logger.info("No clusters to assign.")
+            return {"driver_to_cluster": {}, "unassigned_clusters": {}}
+
+        # No drivers -> defer all clusters
+        if D == 0:
+            self.logger.info("No drivers available; deferring all clusters.")
             return {
                 "driver_to_cluster": {},
                 "unassigned_clusters": {
-                    c.id: {"motivations": "No drivers or no clusters"}
+                    cluster.id: {"motivations": "No drivers available"}
+                    for cluster in clusters
                 },
             }
 
@@ -177,6 +189,17 @@ class OrdersOptimizer:
             if j not in assigned_cluster_idx and cluster.id not in unassigned_clusters:
                 unassigned_clusters[cluster.id] = {"motivations": "No driver available"}
                 self.logger.info(f"Cluster {cluster.id} deferred (not enough drivers).")
+
+        order_idxs_to_update = [
+            order_ids
+            for v in driver_to_cluster.values()
+            for order_ids in v["cluster"].get_order_ids
+        ]
+        self.logger.info("Updating orders status ...")
+        update_order_status(db=self.db, order_ids=order_idxs_to_update)
+
+        # TODO: update cluster's status
+        # TODO: mark driver as unavailable
 
         return {
             "driver_to_cluster": driver_to_cluster,
