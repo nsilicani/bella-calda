@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, Table, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, JSON, Table, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.schemas.cluster import ClusterStatus
 
 # Association Table
 order_cluster_association = Table(
@@ -19,6 +20,7 @@ class OrderCluster(Base):
     total_items = Column(Integer, nullable=False)
     earliest_delivery_time = Column(DateTime, nullable=False)
     cluster_route = Column(JSON, nullable=False)
+    cluster_status = Column(Enum(ClusterStatus), default=ClusterStatus.to_be_assigned, nullable=False)
 
     # Many-to-many relationship
     orders = relationship(

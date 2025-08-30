@@ -13,11 +13,12 @@ from scipy.optimize import linear_sum_assignment
 import numpy as np
 
 from app.config import ClusteringSettings, PizzaPreparationSettings
-from app.crud.cluster import create_cluster
+from app.crud.cluster import create_cluster, update_cluster_status
+from app.crud.driver import update_driver_status
 from app.crud.order import update_order_status
 from app.models.driver import Driver, DriverStatus
 from app.models.order import Order
-from app.schemas.cluster import ClusterRoute, OrderCluster, DeliveryStep, RouteSegment
+from app.schemas.cluster import ClusterRoute, ClusterStatus, OrderCluster, DeliveryStep, RouteSegment
 from app.schemas.order import DeliveryAddress, OrderResponse
 from app.services.route_planner.base import RoutePlannerService
 
@@ -49,7 +50,6 @@ class OrdersOptimizer:
             filtered_orders=filtered_orders
         )
         clusters = sorted(clustered_orders, key=lambda x: x.earliest_delivery_time)
-        # Persist clusters in DB. TODO: add "status" field in cluster model
         for c in clusters:
             new_cluster = create_cluster(db=self.db, order_cluster=c)
         drivers = self.fetch_available_drivers_with_location(
@@ -195,11 +195,18 @@ class OrdersOptimizer:
             for v in driver_to_cluster.values()
             for order_ids in v["cluster"].get_order_ids
         ]
+        
+        # Update orders status
         self.logger.info("Updating orders status ...")
         update_order_status(db=self.db, order_ids=order_idxs_to_update)
 
-        # TODO: update cluster's status
-        # TODO: mark driver as unavailable
+        # Updating cluster's status
+        self.logger.info("Updating clusters status ...")
+        update_cluster_status(db=self.db, order_cluster_ids=[v["cluster"].id for v in driver_to_cluster.values()])
+        
+        # Marking drivers as delivering
+        self.logger.info(" Marking drivers as delivering ...")
+        update_driver_status(db=self.db, driver_ids=list(driver_to_cluster))
 
         return {
             "driver_to_cluster": driver_to_cluster,
@@ -379,6 +386,7 @@ class OrdersOptimizer:
                     total_items=total_items,
                     earliest_delivery_time=earliest_delivery_time,
                     cluster_route=cluster_route,
+                    cluster_status=ClusterStatus.to_be_assigned,
                 )
                 clustered_orders.append(cluster_obj)
         return clustered_orders

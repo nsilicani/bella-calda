@@ -1,12 +1,13 @@
+from typing import List
 from sqlalchemy.orm import Session
 
-from app.models.cluster import OrderCluster as order_cluster_model
+from app.models.cluster import OrderCluster as OrderClusterModel
 from app.models.order import Order
-from app.schemas.cluster import OrderCluster
+from app.schemas.cluster import ClusterStatus, OrderCluster
 
 
-def create_cluster(*, db: Session, order_cluster: OrderCluster) -> None:
-    new_cluster = order_cluster_model(
+def create_cluster(*, db: Session, order_cluster: OrderCluster) -> OrderClusterModel:
+    new_cluster = OrderClusterModel(
         id=order_cluster.id,
         time_window=order_cluster.time_window,
         total_items=order_cluster.total_items,
@@ -20,3 +21,12 @@ def create_cluster(*, db: Session, order_cluster: OrderCluster) -> None:
     db.commit()
     db.refresh(new_cluster)
     return new_cluster
+
+def update_cluster_status(*, db: Session, order_cluster_ids: List[str]) -> None:
+    db.query(OrderClusterModel).filter(
+        OrderClusterModel.id.in_(order_cluster_ids)
+    ).update(
+        {OrderClusterModel.cluster_status: ClusterStatus.assigned},
+        synchronize_session=False
+    )
+    db.commit()

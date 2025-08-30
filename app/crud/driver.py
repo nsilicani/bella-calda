@@ -1,6 +1,7 @@
+from typing import List
 from sqlalchemy.orm import Session
 
-from app.models.driver import Driver
+from app.models.driver import Driver, DriverStatus
 from app.schemas.driver import DriverCreate, DriverUpdate
 
 
@@ -27,3 +28,12 @@ def update_driver(*, db: Session, driver: Driver, driver_update: DriverUpdate):
     db.commit()
     db.refresh(driver)
     return driver
+
+def update_driver_status(*, db: Session, driver_ids: List[int]) -> None:
+    db.query(Driver).filter(
+        Driver.id.in_(driver_ids)
+    ).update(
+        {Driver.status: DriverStatus.DELIVERING},
+        synchronize_session=False
+    )
+    db.commit()

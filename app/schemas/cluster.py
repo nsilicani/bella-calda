@@ -1,7 +1,8 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from datetime import datetime
 from pydantic import BaseModel, Field
 import secrets
+import enum
 
 from app.schemas.order import DeliveryAddress, OrderResponse
 
@@ -37,6 +38,11 @@ class ClusterRoute(BaseModel):
     duration: float = Field(..., description="Total travel time in seconds")
     segments: List[RouteSegment]
 
+class ClusterStatus(str, enum.Enum):
+    to_be_assigned = "to_be_assigned"
+    assigned = "assigned"
+    delivered = "delivered"
+    cancelled = "cancelled"
 
 class OrderCluster(BaseModel):
     id: str = Field(default_factory=lambda: secrets.token_hex(2))
@@ -49,6 +55,7 @@ class OrderCluster(BaseModel):
         ..., description="Earliest delivery time among orders"
     )
     cluster_route: ClusterRoute = Field(..., description="cluster route specifications")
+    cluster_status: ClusterStatus
 
     @property
     def customer_locations(self) -> List[Tuple[float, float]]:
@@ -60,3 +67,12 @@ class OrderCluster(BaseModel):
     @property
     def get_order_ids(self) -> List[int]:
         return [order.id for order in self.orders]
+
+class OrderClusterUpdate(BaseModel):
+    id: str
+    time_window: Optional[datetime] = None
+    orders: Optional[List[OrderResponse]] = None
+    total_items: Optional[int] = None
+    earliest_delivery_time: Optional[datetime] = None
+    cluster_route: Optional[ClusterRoute] = None
+    cluster_status: Optional[ClusterStatus] = None
