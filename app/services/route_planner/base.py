@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 
 class RoutePlannerService(ABC):
@@ -10,7 +11,20 @@ class RoutePlannerService(ABC):
         pass
 
     @abstractmethod
-    def get_coordinates(self, address_from: str, address_to: str):
+    def format_address(self, address: str, postal_code: str, city: str, state: str):
+        pass
+
+    @abstractmethod
+    def get_coordinates(
+        self, address: str, postal_code: str, city: str, state: str
+    ) -> List[float]:
+        """
+        Converting addresses into geographic coordinates
+        """
+        pass
+
+    @abstractmethod
+    def compute_distance_matrix(self) -> List[List[float]]:
         pass
 
     @abstractmethod
@@ -19,4 +33,8 @@ class RoutePlannerService(ABC):
 
     @abstractmethod
     def get_optimize_route(self):
+        pass
+
+    @abstractmethod
+    def format_direction_response(self, direction_response: dict) -> dict:
         pass

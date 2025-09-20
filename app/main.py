@@ -6,10 +6,12 @@ from fastapi.routing import APIRoute
 from app.api.main import api_router
 from app.database import create_db_and_tables
 from app.models import (
+    cluster,
     driver,
     order,
     user,
 )  # Order matters! (https://sqlmodel.tiangolo.com/tutorial/create-db-and-table/#sqlmodel-metadata-order-matters)
+from app.config_logging import setup_logging
 from app.config import settings
 
 
@@ -20,6 +22,7 @@ def custom_generate_unique_id(route: APIRoute) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
+    setup_logging(settings)
     yield
 
 

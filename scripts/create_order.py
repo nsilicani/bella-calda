@@ -1,30 +1,22 @@
 import requests
-from datetime import datetime, timedelta
 
-# ✅ API base URL
-BASE_URL = "http://localhost:8000"
-
-# ✅ Login credentials
-EMAIL = "user@example.com"
-PASSWORD = "password123"
-
-# ✅ Order payload
-order_payload = {
-    "customer_name": "Alice",
-    "customer_phone": "+123456789",
-    "delivery_address": "123 Pizza Street",
-    "items": "Margherita,Pepsi",
-    "estimated_prep_time": 20,
-    "desired_delivery_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
-}
+from constants import (
+    LOGIN_ENDPOINT,
+    ORDERS_ENDPOINT,
+    ORDERS_OPTIMIZER_ENDPOINT,
+    GET_AVAILABLE_ORDERS_ENDPOINT,
+    CLUSTER_ENDPOINT,
+    DRIVERS_ENDPOINT,
+    TEST_USERS_FOR_CLUSTERING,
+    ORDER_PAYLOAD_FOR_CLUSTERING,
+)
 
 
-def login():
+def login(username, password):
     """Authenticate and retrieve access token"""
-    url = f"{BASE_URL}/api/v1/auth/login"
     response = requests.post(
-        url,
-        data={"username": EMAIL, "password": PASSWORD},
+        LOGIN_ENDPOINT,
+        data={"username": username, "password": password},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
@@ -35,17 +27,63 @@ def login():
     return token
 
 
-def create_order(token):
+def create_order(token, order_payload):
     """Send authenticated request to create an order"""
-    url = f"{BASE_URL}/api/v1/orders/order/"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    response = requests.post(url, json=order_payload, headers=headers)
+    response = requests.post(ORDERS_ENDPOINT, json=order_payload, headers=headers)
 
     print(f"Status Code: {response.status_code}")
     print("Response:")
     print(response.json())
 
 
+def optimize_order():
+    response_optimze = requests.post(url=ORDERS_OPTIMIZER_ENDPOINT)
+    print(f"Status Code: {response_optimze.status_code}")
+    print("Response:")
+    data = response_optimze.json()
+    print(data)
+    return data
+
+
+def get_available_orders():
+    response_get_available_orders = requests.get(url=GET_AVAILABLE_ORDERS_ENDPOINT)
+    print(f"Status Code: {response_get_available_orders.status_code}")
+    print("Response:")
+    data = response_get_available_orders.json()
+    print(data)
+    return data
+
+
+def cluster_orders():
+    response_cluster_orders = requests.get(url=CLUSTER_ENDPOINT)
+    print(f"Status Code: {response_cluster_orders.status_code}")
+    print("Response:")
+    data = response_cluster_orders.json()
+    for idx, cluster in enumerate(data):
+        print(f"Cluster: {idx}, ")
+        for order in cluster:
+            print(order["delivery_address"], order)
+        print("\n")
+    return data
+
+
+def list_drivers():
+    response_list_driver = requests.get(url=DRIVERS_ENDPOINT)
+    print(f"Status Code: {response_list_driver.status_code}")
+    print("Response:")
+    data = response_list_driver.json()
+    print(data)
+    return data
+
+
 if __name__ == "__main__":
-    token = login()
-    create_order(token)
+    for test_user in TEST_USERS_FOR_CLUSTERING:
+        order_payload = ORDER_PAYLOAD_FOR_CLUSTERING[test_user["full_name"]]
+        token = login(username=test_user["email"], password=test_user["password"])
+        create_order(token=token, order_payload=order_payload)
+    print("***" * 20)
+    _ = optimize_order()
+    _ = get_available_orders()
+    _ = cluster_orders()
+    _ = list_drivers()
