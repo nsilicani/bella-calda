@@ -79,7 +79,7 @@ async def optimize_orders(optimizer: OrdersOptimizer = Depends(get_optimizer)):
         logger.info(f"Unassigned Clusters: {len(unassigned)}")
         return {
             "detail": f"Order optimization completed successfully. Number of Clusters: {len(clustered_orders)}. Unassigned Clusters: {len(unassigned)}",
-            "unassigned": unassigned,
+            "unassigned": {k: v["motivations"] for k,v in unassigned.items()},
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

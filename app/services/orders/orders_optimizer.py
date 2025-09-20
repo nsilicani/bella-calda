@@ -1,7 +1,7 @@
 import secrets
 
 from sqlalchemy.orm import Session
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 from collections import defaultdict
 from datetime import datetime, timedelta
 from logging import Logger
@@ -23,7 +23,17 @@ from app.schemas.order import DeliveryAddress, OrderResponse
 from app.services.route_planner.base import RoutePlannerService
 
 
+RelaxationStrategy = Callable[
+    [Dict[str, Any], int],
+    Dict[str, Any]
+]
+
+
 class OrdersOptimizer:
+
+    DEFAULT_CONSTRAINTS: Dict[str, Any] = {"max_hotness": 20, "lateness_tol": 10}
+    DEFAULT_WEIGHTS: Dict[str, float] = {"wait_time": 0.2, "max_lateness": 0.5, "route_duration": 0.3}
+
     def __init__(
         self,
         db: Session,
@@ -38,6 +48,14 @@ class OrdersOptimizer:
         self.pizza_prep_settings = pizza_prep_settings
         self.logger = logger
 
+    def _default_profile(self) -> Dict[str, Any]:
+        # profile structure: constraints + weights + log
+        return {
+            "constraints": dict(self.DEFAULT_CONSTRAINTS),
+            "weights": dict(self.DEFAULT_WEIGHTS),
+            "log": [],
+        }
+
     async def run(self):
         # 1) Prepare inputs
         ready_orders = self.fetch_unassigned_orders()
@@ -51,7 +69,7 @@ class OrdersOptimizer:
         )
         clusters = sorted(clustered_orders, key=lambda x: x.earliest_delivery_time)
         for c in clusters:
-            new_cluster = create_cluster(db=self.db, order_cluster=c)
+            create_cluster(db=self.db, order_cluster=c)
         drivers = self.fetch_available_drivers_with_location(
             eta_threshold_minutes=self.clustering_settings.ETA_THRESHOLD_MINUTES
         )
@@ -59,6 +77,67 @@ class OrdersOptimizer:
             f"Total Clusters: {len(clusters)} | Available Drivers: {len(drivers)}"
         )
 
+        # ---- First strict assignment (no relaxation) ----
+        first_pass = self.try_assign_cluster(clusters=clusters, drivers=drivers)
+        driver_to_cluster = first_pass["driver_to_cluster"]
+        unassigned_clusters = first_pass["unassigned_clusters"]
+
+        # ---- Apply DB updates for first pass ----
+        order_idxs_to_update = [
+            order_ids
+            for v in driver_to_cluster.values()
+            for order_ids in v["cluster"].get_order_ids
+        ]
+        if order_idxs_to_update:
+            # Update orders status
+            self.logger.info("Updating orders status ...")
+            update_order_status(db=self.db, order_ids=order_idxs_to_update)
+
+        cluster_idxs_to_update = [v["cluster"].id for v in driver_to_cluster.values()]
+        if cluster_idxs_to_update:
+            # Updating cluster's status
+            self.logger.info("Updating clusters status ...")
+            update_cluster_status(db=self.db, order_cluster_ids=cluster_idxs_to_update)
+        
+        assigned_driver_ids = list(driver_to_cluster)
+        if assigned_driver_ids:
+            # Marking drivers as delivering
+            self.logger.info(" Marking drivers as delivering ...")
+            update_driver_status(db=self.db, driver_ids=assigned_driver_ids)
+
+        # ---- Relaxation phase only on unassigned clusters, with remaining drivers ----
+        self.logger.info(f"{unassigned_clusters.keys()=}")
+        relaxed, still_unassigned = self.relax_unassigned_batch(
+            unassigned_clusters=unassigned_clusters,
+            drivers=[d for d in drivers if d.id not in driver_to_cluster],  # remaining drivers
+            strategies=[self.relax_hotness, self.relax_lateness],
+            max_rounds=100,
+        )
+        self.logger.info(f"{relaxed=}")
+
+        # ---- Apply incremental DB updates for newly assigned from relaxation ----
+        if relaxed:
+            order_ids_relaxed = [
+                order_id
+                for v in relaxed.values()
+                for order_id in v["cluster"].get_order_ids()
+            ]
+            if order_ids_relaxed:
+                update_order_status(db=self.db, order_ids=order_ids_relaxed)
+            cluster_ids_relaxed = [v["cluster"].id for v in relaxed.values()]
+            if cluster_ids_relaxed:
+                update_cluster_status(db=self.db, order_cluster_ids=cluster_ids_relaxed)
+            update_driver_status(db=self.db, driver_ids=list(relaxed.keys()))
+
+        
+        # Merge final mapping & return
+        driver_to_cluster.update(relaxed)
+        return {
+            "driver_to_cluster": driver_to_cluster,
+            "unassigned_clusters": still_unassigned,
+        }
+    
+    def try_assign_cluster(self, clusters: List[OrderCluster], drivers: List[Driver], cluster_profiles: Optional[Dict[str, Dict[str, Any]]] = None,) -> Dict[str, Dict]:
         current_time = datetime.utcnow()
         D, C = len(drivers), len(clusters)
         # No clusters -> nothing to do
@@ -72,7 +151,7 @@ class OrdersOptimizer:
             return {
                 "driver_to_cluster": {},
                 "unassigned_clusters": {
-                    cluster.id: {"motivations": "No drivers available"}
+                    cluster.id: {"cluster": cluster, "motivations": "No drivers available"}
                     for cluster in clusters
                 },
             }
@@ -82,6 +161,10 @@ class OrdersOptimizer:
         motivations = {}  # (driver_id, cluster_id) -> reason/feasible
 
         for j, cluster in enumerate(clusters):
+            prof = (cluster_profiles or {}).get(cluster.id, self._default_profile())
+            constraints = prof["constraints"]
+            weights = prof["weights"]
+
             latest_prep_time = self.estimate_latest_pizza_ready_time(
                 total_pizzas=cluster.total_items,
                 chefs=self.pizza_prep_settings.CHEFS,
@@ -103,31 +186,44 @@ class OrdersOptimizer:
                 )
                 wait_time = max(timedelta(0), dispatch_ready_time - driver_ready_time)
 
+                # TODO: time_for_payment should be a parameter
                 delivery_estimates = self.simulate_delivery_times(
                     cluster=cluster,
                     dispatch_ready_time=dispatch_ready_time,
                     time_for_payment=timedelta(seconds=120),
                 )
 
+                # ---- Feasibility checks (hard constraints) ----
+                max_hotness = constraints["max_hotness"]
+                lateness_tol = constraints["lateness_tol"]
+
                 # Hotness constraint: 20 minutes max from bake/dispatch to drop
                 violates_hotness = any(
-                    est["delivery_time"] - dispatch_ready_time > timedelta(minutes=20)
+                    est["delivery_time"] - dispatch_ready_time > timedelta(minutes=max_hotness)
+                    for est in delivery_estimates.values()
+                )
+                # Lateness check
+                violates_lateness = any(
+                    est["delivery_time"] - cluster.earliest_delivery_time > timedelta(minutes=lateness_tol)
                     for est in delivery_estimates.values()
                 )
                 if violates_hotness:
                     motivations[(driver.id, cluster.id)] = "Hotness constraint not met"
                     # leave as NaN (infeasible)
                     continue
+                if violates_lateness:
+                    motivations[(driver.id, cluster.id)] = f"Lateness > {lateness_tol} mins"
+                    continue
+
 
                 # Compute finite cost
-                # TODO: pass weights as config
                 cost = self.compute_assignment_cost(
                     wait_time=wait_time,
                     delivery_times=delivery_estimates,
                     route_duration=cluster.cluster_route.duration,
-                    weight_wait_time=0.2,
-                    weight_max_lateness=0.5,
-                    weight_route_duration=0.3,
+                    weight_wait_time=weights["wait_time"],
+                    weight_max_lateness=weights["max_lateness"],
+                    weight_route_duration=weights["route_duration"],
                 )
                 costs[i, j] = float(cost)
                 motivations[(driver.id, cluster.id)] = "Feasible"
@@ -143,7 +239,7 @@ class OrdersOptimizer:
             return {
                 "driver_to_cluster": {},
                 "unassigned_clusters": {
-                    c.id: {"motivations": "No feasible driver"} for c in clusters
+                    c.id: {"cluster": c, "motivations": "No feasible driver"} for c in clusters
                 },
             }
 
@@ -155,10 +251,10 @@ class OrdersOptimizer:
         row_ind, col_ind = linear_sum_assignment(filled_costs)
 
         # 4) Post-process: anything that hit BIG_M is treated as unassigned
-        driver_to_cluster = {}
-        unassigned_clusters = {}
-
+        driver_to_cluster: Dict[int, Dict[str, Any]] = {}
+        unassigned_clusters: Dict[str, Dict[str, Any]] = {}
         assigned_cluster_idx = set()
+    
         for i, j in zip(row_ind, col_ind):
             driver = drivers[i]
             cluster = clusters[j]
@@ -167,6 +263,7 @@ class OrdersOptimizer:
             if cost_ij >= BIG_M:  # infeasible -> do NOT assign
                 # Mark this cluster as still unassigned; driver remains idle.
                 unassigned_clusters[cluster.id] = {
+                    "cluster": cluster,
                     "motivations": motivations.get(
                         (driver.id, cluster.id), "No feasible driver"
                     )
@@ -175,43 +272,109 @@ class OrdersOptimizer:
                     f"Defer Cluster {cluster.id} (infeasible for all drivers)."
                 )
             else:
+                assign_prof = (cluster_profiles or {}).get(cluster.id, self._default_profile())
                 driver_to_cluster[driver.id] = {
                     "cluster": cluster,
                     "cost": float(cost_ij),
+                    "relaxation_log": assign_prof.get("log", []),
                 }
                 assigned_cluster_idx.add(j)
                 self.logger.info(
-                    f"Assign Driver: {driver.full_name} -> Cluster: {cluster.id} | Cost: {cost_ij:.2f}"
+                    f"Assign Driver: {driver.full_name} -> Cluster: {cluster.id} | "
+                    f"Cost: {cost_ij:.2f} | Relaxations: {assign_prof.get('log') or 'none'}"
                 )
 
         # 5) Any cluster not selected at all (when D < C) is unassigned
         for j, cluster in enumerate(clusters):
             if j not in assigned_cluster_idx and cluster.id not in unassigned_clusters:
-                unassigned_clusters[cluster.id] = {"motivations": "No driver available"}
+                unassigned_clusters[cluster.id] = {"cluster": cluster, "motivations": "No driver available"}
                 self.logger.info(f"Cluster {cluster.id} deferred (not enough drivers).")
-
-        order_idxs_to_update = [
-            order_ids
-            for v in driver_to_cluster.values()
-            for order_ids in v["cluster"].get_order_ids
-        ]
-        
-        # Update orders status
-        self.logger.info("Updating orders status ...")
-        update_order_status(db=self.db, order_ids=order_idxs_to_update)
-
-        # Updating cluster's status
-        self.logger.info("Updating clusters status ...")
-        update_cluster_status(db=self.db, order_cluster_ids=[v["cluster"].id for v in driver_to_cluster.values()])
-        
-        # Marking drivers as delivering
-        self.logger.info(" Marking drivers as delivering ...")
-        update_driver_status(db=self.db, driver_ids=list(driver_to_cluster))
 
         return {
             "driver_to_cluster": driver_to_cluster,
             "unassigned_clusters": unassigned_clusters,
         }
+
+    def relax_unassigned_batch(
+        self,
+        unassigned_clusters: Dict[str, Dict],
+        drivers: List[Driver],
+        strategies: List[RelaxationStrategy],
+        max_rounds: int = 3,
+    ) -> Tuple[Dict[str, Dict], Dict[str, Dict]]:
+        """
+        Progressive relaxation over unassigned clusters.
+        Keeps profiles separately (no mutation of Pydantic cluster objects).
+        """
+        profiles: Dict[str, Dict[str, Any]] = {}
+        relaxed_assignments: Dict[int, Dict[str, Any]] = {}
+        still_unassigned = dict(unassigned_clusters)
+        remaining_drivers = list(drivers)
+
+        for round_num in range(1, max_rounds + 1):
+            if not still_unassigned or not remaining_drivers:
+                break
+
+            # Apply strategies to adjust constraints for this round
+            adjusted_clusters: List["OrderCluster"] = []
+            for cluster_id in list(still_unassigned.keys()):
+                cluster = still_unassigned[cluster_id]["cluster"]
+                prof = profiles.get(cluster_id) or self._default_profile()
+                # apply all strategies for this round
+                for strat in strategies:
+                    before = (prof["constraints"].copy(), prof["weights"].copy())
+                    prof = strat(prof, round_num)
+                    after = (prof["constraints"], prof["weights"])
+                    if before != after:
+                        # strategy implementations already append to log; this is just a safety net
+                        pass
+                profiles[cluster_id] = prof
+                adjusted_clusters.append(cluster)
+
+            # Run assignment with relaxed constraints
+            self.logger.info(f"Run assignment with relaxed constraints")
+            result = self.try_assign_cluster(
+                clusters=adjusted_clusters,
+                drivers=remaining_drivers,
+                cluster_profiles=profiles,
+                )
+            
+            round_assign = result["driver_to_cluster"]
+            round_unassigned = result["unassigned_clusters"]
+
+            # Merge successes
+            relaxed_assignments.update(round_assign)
+            # Remove assigned clusters and drivers from next round
+            assigned_cluster_ids = {v["cluster"].id for v in round_assign.values()}
+            assigned_driver_ids = set(round_assign.keys())
+            for cid in assigned_cluster_ids:
+                still_unassigned.pop(cid, None)
+                profiles.setdefault(cid, profiles.get(cid, self._default_profile()))  # keep final profile
+            remaining_drivers = [d for d in remaining_drivers if d.id not in assigned_driver_ids]
+
+            # Early stop if nothing improved
+            if not round_assign:
+                break
+
+        return relaxed_assignments, still_unassigned
+
+    @staticmethod
+    def relax_hotness(profile: Dict[str, Any], round_num: int) -> Dict[str, Any]:
+        """Set hotness tolerance based on round number."""
+        c = profile.setdefault("constraints", {})
+        base = 20
+        c["max_hotness"] = base + 5 * round_num
+        profile.setdefault("log", []).append(f"Relaxed hotness tolerance to {c['max_hotness']} mins")
+        return profile
+
+    @staticmethod
+    def relax_lateness(profile: Dict[str, Any], round_num: int) -> Dict[str, Any]:
+        """Set lateness tolerance based on round number."""
+        c = profile.setdefault("constraints", {})
+        base = 10
+        c["lateness_tol"] = base + 5 * round_num
+        profile.setdefault("log", []).append(f"Relaxed lateness tolerance to {c['lateness_tol']} mins")
+        return profile
 
     def fetch_unassigned_orders(self) -> List[Order]:
         return self.db.query(Order).filter(Order.status == "pending").all()
@@ -387,6 +550,7 @@ class OrdersOptimizer:
                     earliest_delivery_time=earliest_delivery_time,
                     cluster_route=cluster_route,
                     cluster_status=ClusterStatus.to_be_assigned,
+                    relaxed_constraints=None,
                 )
                 clustered_orders.append(cluster_obj)
         return clustered_orders

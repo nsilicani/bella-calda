@@ -21,6 +21,7 @@ class OrderCluster(Base):
     earliest_delivery_time = Column(DateTime, nullable=False)
     cluster_route = Column(JSON, nullable=False)
     cluster_status = Column(Enum(ClusterStatus), default=ClusterStatus.to_be_assigned, nullable=False)
+    relaxed_constraints = Column(JSON, nullable=False)
 
     # Many-to-many relationship
     orders = relationship(

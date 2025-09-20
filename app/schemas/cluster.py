@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from pydantic import BaseModel, Field
 import secrets
@@ -44,7 +44,7 @@ class ClusterStatus(str, enum.Enum):
     delivered = "delivered"
     cancelled = "cancelled"
 
-class OrderCluster(BaseModel):
+class OrderCluster(BaseModel, frozen=False):
     id: str = Field(default_factory=lambda: secrets.token_hex(2))
     time_window: datetime = Field(
         ..., description="Time window used to aggregate orders in clusters by time"
@@ -54,8 +54,9 @@ class OrderCluster(BaseModel):
     earliest_delivery_time: datetime = Field(
         ..., description="Earliest delivery time among orders"
     )
-    cluster_route: ClusterRoute = Field(..., description="cluster route specifications")
+    cluster_route: ClusterRoute = Field(..., description="Cluster route specifications")
     cluster_status: ClusterStatus
+    relaxed_constraints: Optional[Dict[str, int]] = Field(..., description="Relaxing strategy to assing unassinged clusters")
 
     @property
     def customer_locations(self) -> List[Tuple[float, float]]:

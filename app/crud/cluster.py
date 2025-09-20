@@ -13,6 +13,7 @@ def create_cluster(*, db: Session, order_cluster: OrderCluster) -> OrderClusterM
         total_items=order_cluster.total_items,
         earliest_delivery_time=order_cluster.earliest_delivery_time,
         cluster_route=order_cluster.cluster_route.model_dump(),
+        relaxed_constraints=None,
     )
     for idx in order_cluster.get_order_ids:
         order_obj = db.query(Order).get(idx)
